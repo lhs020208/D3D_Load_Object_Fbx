@@ -286,148 +286,31 @@ void CCubeObject::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pC
 	CGameObject::Render(pd3dCommandList, pCamera);
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void CExplosionObject::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera)
-{
-		for (int i = 0; i < EXPLOSION_DEBRISES; i++) {
-			if (Draw[i])
-				CGameObject::Render(pd3dCommandList, pCamera, &m_pxmf4x4Transforms[i]);
-		}
-}
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void CTankObject::Animate(float fElapsedTime)
 {
-	if (IsExist()) {
-		if (m_bBlowingUp)
-		{
-			m_fElapsedTimes += fElapsedTime;
-			if (m_fElapsedTimes >= m_fDuration)
-			{
-				SetExist(false);
-				return;
-			}
 
-			for (int i = 0; i < EXPLOSION_DEBRISES; i++) {
-				XMFLOAT3 direction = m_pxmf3SphereVectors[i];
-				XMFLOAT3 position = Vector3::Add(GetPosition(), Vector3::ScalarProduct(direction, m_fElapsedTimes * m_fExplosionSpeed));
-				XMFLOAT4X4 world = Matrix4x4::RotationAxis(direction, m_fElapsedTimes * XMConvertToRadians(m_fExplosionRotation));
-				world._41 = position.x; world._42 = position.y; world._43 = position.z;
-				m_pxmf4x4Transforms[i] = world;
-			}
-		}
-		else
-		{
-			int forward_Step = 100;
-			if (timer < forward_Step)
-				SetPosition(Vector3::Add(GetPosition(), Vector3::ScalarProduct(GetLook(), fElapsedTime * 0.5f * 5, false)));
-			if (timer >= forward_Step && timer < forward_Step + 30)
-				Rotate(0.0f, 6.0f, 0.0f);
-			if (timer >= forward_Step + 30 && timer < 2 * forward_Step + 30)
-				SetPosition(Vector3::Add(GetPosition(), Vector3::ScalarProduct(GetLook(), fElapsedTime * 0.5f * 5, false)));
-			if (timer >= 2 * forward_Step + 30 && timer < 2 * forward_Step + 60)
-				Rotate(0.0f, 6.0f, 0.0f);
+	int forward_Step = 100;
+	if (timer < forward_Step)
+		SetPosition(Vector3::Add(GetPosition(), Vector3::ScalarProduct(GetLook(), fElapsedTime * 0.5f * 5, false)));
+	if (timer >= forward_Step && timer < forward_Step + 30)
+		Rotate(0.0f, 6.0f, 0.0f);
+	if (timer >= forward_Step + 30 && timer < 2 * forward_Step + 30)
+		SetPosition(Vector3::Add(GetPosition(), Vector3::ScalarProduct(GetLook(), fElapsedTime * 0.5f * 5, false)));
+	if (timer >= 2 * forward_Step + 30 && timer < 2 * forward_Step + 60)
+		Rotate(0.0f, 6.0f, 0.0f);
 
-			timer++;
-			if (timer == 2 * forward_Step + 60) timer = 0;
-
-			if (shot) {
-				bullet_timer++;
-				bullet->SetPosition(Vector3::Add(bullet->GetPosition(), Vector3::ScalarProduct(bullet->GetLook(), fElapsedTime * 2.0f * 5, false)));
-				if (bullet_timer >= 200) {
-					bullet_timer = 0;
-					SwitchShot();
-				}
-			}
-			else {
-				using namespace std;
-				default_random_engine dre{ random_device{}() };
-				uniform_int_distribution<int> uid{ 0,100 };
-				if (uid(dre) == 0) {
-					bullet->SetPosition(GetPosition().x, GetPosition().y, GetPosition().z);
-
-					XMFLOAT3 right = GetRight();
-					XMFLOAT3 up = GetUp();
-					XMFLOAT3 look = GetLook();
-
-					XMFLOAT4X4 rotationMatrix;
-					rotationMatrix._11 = right.x; rotationMatrix._12 = right.y; rotationMatrix._13 = right.z; rotationMatrix._14 = 0.0f;
-					rotationMatrix._21 = up.x;    rotationMatrix._22 = up.y;    rotationMatrix._23 = up.z;    rotationMatrix._24 = 0.0f;
-					rotationMatrix._31 = look.x;  rotationMatrix._32 = look.y;  rotationMatrix._33 = look.z;  rotationMatrix._34 = 0.0f;
-					rotationMatrix._41 = 0.0f;    rotationMatrix._42 = 0.0f;    rotationMatrix._43 = 0.0f;    rotationMatrix._44 = 1.0f;
-
-					bullet->SetRotationTransform(&rotationMatrix);
-
-					SwitchShot();
-				}
-			}
-		}
-	}
+	timer++;
+	if (timer == 2 * forward_Step + 60) timer = 0;
 
 	UpdateBoundingBox();
-	bullet->UpdateBoundingBox();
 }
 
 void CTankObject::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera)
 {
-	if (IsExist()) {
-		if (!m_bBlowingUp)
-		{
-			CGameObject::Render(pd3dCommandList, pCamera);
-			if (shot)
-				bullet->Render(pd3dCommandList, pCamera);
-		}
-	}
-}
-
-void CTankObject::PrepareExplosion()
-{
-	m_bBlowingUp = true;
-	m_fElapsedTimes = 0.0f;
-
-	for (int i = 0; i < EXPLOSION_DEBRISES; i++) {
-		XMStoreFloat3(&m_pxmf3SphereVectors[i], RandomUnitVectorOnSphere());
-		m_pExplosionObjects->Draw[i] = true;
-	}
+	CGameObject::Render(pd3dCommandList, pCamera);
 }
 
 void CTankObject::ReleaseUploadBuffers()
 {
 	CGameObject::ReleaseUploadBuffers();
-	if (bullet) bullet->ReleaseUploadBuffers();
-}
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-CHeightMapTerrain::CHeightMapTerrain(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList
-	* pd3dCommandList, ID3D12RootSignature* pd3dGraphicsRootSignature, LPCTSTR pFileName, int
-	nWidth, int nLength, int nBlockWidth, int nBlockLength, XMFLOAT3 xmf3Scale, XMFLOAT4
-	xmf4Color) : CGameObject(0)
-{
-	m_nWidth = nWidth;
-	m_nLength = nLength;
-
-	int cxQuadsPerBlock = nBlockWidth - 1;
-	int czQuadsPerBlock = nBlockLength - 1;
-
-	m_xmf3Scale = xmf3Scale;
-	m_pHeightMapImage = new CHeightMapImage(pFileName, nWidth, nLength, xmf3Scale);
-	long cxBlocks = (m_nWidth - 1) / cxQuadsPerBlock;
-	long czBlocks = (m_nLength - 1) / czQuadsPerBlock;
-	m_nMeshes = cxBlocks * czBlocks;
-	m_ppMeshes = new CMesh*[m_nMeshes];
-
-	for (int i = 0; i < m_nMeshes; i++)m_ppMeshes[i] = NULL;
-	CHeightMapGridMesh* pHeightMapGridMesh = NULL;
-	for (int z = 0, zStart = 0; z < czBlocks; z++)
-	{
-		for (int x = 0, xStart = 0; x < cxBlocks; x++)
-		{
-			xStart = x * (nBlockWidth - 1);
-			zStart = z * (nBlockLength - 1);
-			pHeightMapGridMesh = new CHeightMapGridMesh(pd3dDevice, pd3dCommandList, xStart,
-			zStart, nBlockWidth, nBlockLength, xmf3Scale, xmf4Color, m_pHeightMapImage);
-			SetMesh(x + (z * cxBlocks), pHeightMapGridMesh);
-		}
-	}
-}
-CHeightMapTerrain::~CHeightMapTerrain(void)
-{
-	if (m_pHeightMapImage) delete m_pHeightMapImage;
 }

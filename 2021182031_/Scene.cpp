@@ -117,11 +117,6 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandLis
 	pShader->CreateShader(pd3dDevice, m_pd3dGraphicsRootSignature);
 	pShader->CreateShaderVariables(pd3dDevice, pd3dCommandList);
 
-
-	CTerrainLightingShader* pTerrainShader = new CTerrainLightingShader();
-	pTerrainShader->CreateShader(pd3dDevice, m_pd3dGraphicsRootSignature);
-	pTerrainShader->CreateShaderVariables(pd3dDevice, pd3dCommandList);
-
 	using namespace std;
 	default_random_engine dre{ random_device{}() };
 	uniform_real_distribution<float> uid{ 0.0f,1.0f };
@@ -145,84 +140,40 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandLis
 		m_pTank[i]->SetPosition(uid_x(dre) - 50.0f, 0.0f, uid_z(dre) - 50.0f);
 		m_pTank[i]->Rotate(0.0f, uid_rot(dre), 0.0f);
 		m_pTank[i]->UpdateBoundingBox();
-
-		m_pTank[i]->bullet = new CGameObject();
-		CMesh* pMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/Bullet.obj");
-		m_pTank[i]->bullet->SetMesh(0,pMesh);
-		m_pTank[i]->bullet->SetColor(XMFLOAT3(red, green, blue));
-		m_pTank[i]->bullet->SetPosition(-2.0f + 0.5f * i, 0.0f, 1.0f);
-		m_pTank[i]->bullet->SetShader(pShader);
-		m_pTank[i]->bullet->UpdateBoundingBox();
-
-		CCubeMesh* pCubeMesh = new CCubeMesh(pd3dDevice, pd3dCommandList, 0.25f, 0.25f, 0.25f);
-		m_pTank[i]->m_pExplosionObjects = new CExplosionObject();
-		m_pTank[i]->m_pExplosionObjects->SetMesh(0,pCubeMesh);
-		m_pTank[i]->m_pExplosionObjects->SetShader(pShader);
-		m_pTank[i]->m_pExplosionObjects->SetColor(XMFLOAT3(red, green, blue));
-		m_pTank[i]->m_pExplosionObjects->SetPosition(0.0f, 0.0f, 1.0f);
-		m_pTank[i]->m_pExplosionObjects->UpdateBoundingBox();
-
-		for (int j = 0; j < EXPLOSION_DEBRISES; j++) {
-			m_pTank[i]->m_pExplosionObjects->Draw[j] = false;
-		}
 	}
-
-	XMFLOAT3 xmf3Scale(1.0f, 0.2f, 1.0f);
-	XMFLOAT4 xmf4Color(0.2f, 0.2f, 0.2f, 0.0f);
-	m_pTerrain = new CHeightMapTerrain(pd3dDevice, pd3dCommandList,
-		m_pd3dGraphicsRootSignature, _T("Models/HeightMap.raw"), 257, 257, 257,
-		257, xmf3Scale, xmf4Color);
-	m_pTerrain->SetPosition(-128.0f, -20.0f, -128.0f);
-	m_pTerrain->SetColor(XMFLOAT3(0.2f, 0.2f, 0.2f));
-	m_pTerrain->SetShader(pTerrainShader);
-	m_pTerrain->UpdateBoundingBox();
 }
 
 void CTankScene::ReleaseObjects()
 {
 	if (m_pd3dGraphicsRootSignature) m_pd3dGraphicsRootSignature->Release();
 	for (int i = 0; i < m_nTanks; i++) {
-		if (m_pTank[i]->bullet)delete m_pTank[i]->bullet;
-		if (m_pTank[i]->m_pExplosionObjects)delete m_pTank[i]->m_pExplosionObjects;
 		if (m_pTank[i])delete m_pTank[i];
 	}
-	if (m_pTerrain) delete m_pTerrain;
 }
 void CTankScene::ReleaseUploadBuffers()
 {
 	for (int i = 0; i < m_nTanks; i++) {
 		if (m_pTank[i]) m_pTank[i]->ReleaseUploadBuffers();
-		if (m_pTank[i]->m_pExplosionObjects) m_pTank[i]->m_pExplosionObjects->ReleaseUploadBuffers();
 	}
-	if (m_pTerrain) m_pTerrain->ReleaseUploadBuffers();
 }
 void CTankScene::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera)
 {
 	pCamera->SetViewportsAndScissorRects(pd3dCommandList);
 	pCamera->UpdateShaderVariables(pd3dCommandList);
 	float light[6] = {
-		m_xmf3LightDirection.x, 
-		m_xmf3LightDirection.y, 
-		m_xmf3LightDirection.z, 
-		m_xmf3LightColor.x, 
+		m_xmf3LightDirection.x,
+		m_xmf3LightDirection.y,
+		m_xmf3LightDirection.z,
+		m_xmf3LightColor.x,
 		m_xmf3LightColor.y,
-		m_xmf3LightColor.z, 
+		m_xmf3LightColor.z,
 	};
 	pd3dCommandList->SetGraphicsRoot32BitConstants(3, 6, light, 0);
 
-	if (m_pTerrain) m_pTerrain->Render(pd3dCommandList, pCamera);
 	if (m_pPlayer) m_pPlayer->Render(pd3dCommandList, pCamera);
 
 	for (int i = 0; i < m_nTanks; i++) {
-		
-		if (m_pTank[i]->IsExist()) {
-			if (m_pTank[i]->IsBlowingUp()) {
-				m_pTank[i]->m_pExplosionObjects->Render(pd3dCommandList, pCamera);
-			}
-			else {
-				m_pTank[i]->Render(pd3dCommandList, pCamera);
-			}
-		}
+		m_pTank[i]->Render(pd3dCommandList, pCamera);
 	}
 }
 void CTankScene::OnProcessingKeyboardMessage(HWND hWnd, UINT nMessageID, WPARAM wParam, LPARAM lParam)
@@ -244,12 +195,6 @@ void CTankScene::OnProcessingKeyboardMessage(HWND hWnd, UINT nMessageID, WPARAM 
 			break;
 		case 'D':
 			if (m_pPlayer->move_x < 1)m_pPlayer->move_x += 1;
-			break;
-		case VK_SPACE:
-			for (int i = 0; i < 10; i++)
-				if (!m_pTank[i]->IsBlowingUp()) {
-					m_pTank[i]->PrepareExplosion();
-				}
 			break;
 		default:
 			break;
@@ -315,14 +260,6 @@ void CTankScene::Animate(float fElapsedTime)
 
 			m_pTank[i]->Animate(fElapsedTime);
 			XMFLOAT3 xmf3Position = m_pTank[i]->GetPosition();
-			m_pTank[i]->Height = m_pTerrain->GetHeight(xmf3Position);
-
-			if (m_pTank[i]->IsBlowingUp()) {
-				for (int j = 0; j < EXPLOSION_DEBRISES; j++) {
-					m_pTank[i]->m_pExplosionObjects->m_pxmf4x4Transforms[j] = m_pTank[i]->m_pxmf4x4Transforms[j];
-					m_pTank[i]->m_pExplosionObjects->m_pxmf3SphereVectors[j] = m_pTank[i]->m_pxmf3SphereVectors[j];
-				}
-			}
 		}
 	}
 
