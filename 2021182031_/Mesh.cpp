@@ -50,6 +50,24 @@ CMesh::~CMesh()
 	if (m_pd3dNormalBuffer) m_pd3dNormalBuffer->Release();
 	if (m_pd3dTextureCoordBuffer) m_pd3dTextureCoordBuffer->Release();
 	if (m_pd3dIndexBuffer) m_pd3dIndexBuffer->Release();
+
+	if (m_pd3dBoneIndexBuffer) m_pd3dBoneIndexBuffer->Release();
+	if (m_pd3dBoneWeightBuffer) m_pd3dBoneWeightBuffer->Release();
+	if (m_pd3dcbBoneTransforms) m_pd3dcbBoneTransforms->Release();
+
+	if (m_pxu4BoneIndices) delete[] m_pxu4BoneIndices;
+	if (m_pxmf4BoneWeights) delete[] m_pxmf4BoneWeights;
+	if (m_pxmf4x4BoneTransforms) delete[] m_pxmf4x4BoneTransforms;
+
+	if (m_ppPolygons)
+	{
+		for (int i = 0; i < m_nPolygons; ++i)
+		{
+			if (m_ppPolygons[i]) delete m_ppPolygons[i];
+		}
+		delete[] m_ppPolygons;
+		m_ppPolygons = nullptr;
+	}
 }
 
 void CMesh::ReleaseUploadBuffers() 
@@ -58,17 +76,25 @@ void CMesh::ReleaseUploadBuffers()
 	if (m_pd3dNormalUploadBuffer) m_pd3dNormalUploadBuffer->Release();
 	if (m_pd3dTextureCoordUploadBuffer) m_pd3dTextureCoordUploadBuffer->Release();
 	if (m_pd3dIndexUploadBuffer) m_pd3dIndexUploadBuffer->Release();
+	if (m_pd3dBoneIndexUploadBuffer) m_pd3dBoneIndexUploadBuffer->Release();
+	if (m_pd3dBoneWeightUploadBuffer) m_pd3dBoneWeightUploadBuffer->Release();
 
 	m_pd3dPositionUploadBuffer = NULL;
 	m_pd3dNormalUploadBuffer = NULL;
 	m_pd3dTextureCoordUploadBuffer = NULL;
 	m_pd3dIndexUploadBuffer = NULL;
+	m_pd3dBoneIndexUploadBuffer = NULL;
+	m_pd3dBoneWeightUploadBuffer = NULL;
 };
 
 void CMesh::Render(ID3D12GraphicsCommandList *pd3dCommandList)
 {
 	pd3dCommandList->IASetPrimitiveTopology(m_d3dPrimitiveTopology);
 	pd3dCommandList->IASetVertexBuffers(m_nSlot, m_nVertexBufferViews, m_pd3dVertexBufferViews);
+	if (m_bSkinnedMesh && m_pd3dcbBoneTransforms)
+	{
+		pd3dCommandList->SetGraphicsRootConstantBufferView(4, m_pd3dcbBoneTransforms->GetGPUVirtualAddress());
+	}
 	if (m_pd3dIndexBuffer)
 	{
 		pd3dCommandList->IASetIndexBuffer(&m_d3dIndexBufferView);
@@ -202,6 +228,14 @@ void CMesh::LoadMeshFromFile(ID3D12Device* device, ID3D12GraphicsCommandList* cm
 	m_xmOOBB = BoundingOrientedBox(center, extent, XMFLOAT4(0, 0, 0, 1));
 
 	delete[] vbData;
+}
+
+void CMesh::EnableSkinning(int nBones)
+{
+	m_bSkinnedMesh = true;
+	m_pxmf4x4BoneTransforms = new XMFLOAT4X4[nBones];
+	for (int i = 0; i < nBones; ++i)
+		XMStoreFloat4x4(&m_pxmf4x4BoneTransforms[i], XMMatrixIdentity());
 }
 
 

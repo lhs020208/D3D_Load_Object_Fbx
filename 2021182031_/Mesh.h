@@ -38,8 +38,23 @@ public:
 	CDiffusedVertex(XMFLOAT3 pos, XMFLOAT4 dif, XMFLOAT3 normal) : CVertex(pos), m_xmf4Diffuse(dif), m_xmf3Normal(normal) {}
 };
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+struct Bone
+{
+	std::string name;            // 본 이름
+	int parentIndex;             // 부모 본 인덱스
+	XMFLOAT4X4 offsetMatrix;     // Inverse Bind Pose (모델 공간 → 본 공간)
+};
 
+struct SkinnedVertex
+{
+	XMFLOAT3 position;
+	XMFLOAT3 normal;
+	XMFLOAT2 uv;
+	UINT boneIndices[4];     // 어떤 본들이 영향을 주는가
+	float boneWeights[4];    // 각 본의 영향 비율
+};
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+class CAnimator;
 class CMesh
 {
 public:
@@ -98,10 +113,27 @@ protected:
     int							    m_nPolygons = 0;
     CPolygon                        **m_ppPolygons = NULL;
 
+	vector<Bone>					m_Bones;            // 본 정보 배열
+	unordered_map<string, int>		m_BoneNameToIndex;  // 본 이름→인덱스 매핑
+
+	XMUINT4*						m_pxu4BoneIndices = NULL;   // 정점별 본 인덱스 (최대 4)
+	
+	XMFLOAT4*						m_pxmf4BoneWeights = NULL;  // 정점별 본 가중치 (최대 4)
+	XMFLOAT4X4*						m_pxmf4x4BoneTransforms = NULL;  // 최종 본 행렬
+	ID3D12Resource*					m_pd3dcbBoneTransforms = NULL; // GPU용 상수 버퍼
+
+	ID3D12Resource*					m_pd3dBoneIndexBuffer = NULL;
+	ID3D12Resource*					m_pd3dBoneIndexUploadBuffer = NULL;
+	ID3D12Resource*					m_pd3dBoneWeightBuffer = NULL;
+	ID3D12Resource*					m_pd3dBoneWeightUploadBuffer = NULL;
+
+	CAnimator*						m_pAnimator = nullptr;   // 애니메이션 관리자
+	bool							m_bSkinnedMesh = false;        // 스키닝 메시 여부
 public:
 	virtual void Render(ID3D12GraphicsCommandList *pd3dCommandList);
 
 	void LoadMeshFromFile(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName);
+	void EnableSkinning(int nBones);
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
