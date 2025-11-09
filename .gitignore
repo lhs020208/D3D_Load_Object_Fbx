@@ -1,0 +1,130 @@
+# =========================
+# 기본 Visual Studio
+# =========================
+.vs/
+*.vcxproj.user
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# =========================
+# 빌드 산출물 (Debug / Release / x64 / x86)
+# =========================
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+*.log
+*.tlog
+*.pdb
+*.ilk
+*.obj
+*.pch
+*.ipch
+*.idb
+*.sdf
+*.cachefile
+*.db
+*.opendb
+*.VC.db
+*.VC.opendb
+*.manifest
+*.lastbuildstate
+
+# =========================
+# 임시 / 백업 파일
+# =========================
+*.tmp
+*.temp
+*.bak
+*.old
+*.orig
+*.swp
+*.ncb
+*.aps
+
+# =========================
+# DirectX / HLSL / Shader 중간파일
+# =========================
+*.cso
+*.hlsli
+*.psh
+*.vsh
+*.tsh
+*.fxc
+*.binlog
+
+# =========================
+# Windows 리소스 / 런타임 임시파일
+# =========================
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# =========================
+# CMake / Ninja / External Build System (사용 시)
+# =========================
+CMakeFiles/
+CMakeCache.txt
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+build/
+out/
+*.ninja
+*.build_log.json
+
+# =========================
+# vcpkg / External dependencies
+# =========================
+vcpkg_installed/
+packages/
+.vcpkg-root
+*.lib
+*.dll
+*.exe
+
+# =========================
+# 프로젝트 관련
+# =========================
+*.fbx
+*.obj
+*.png
+*.jpg
+*.tga
+*.dds
+*.bmp
+*.wav
+*.mp3
+*.mp4
+*.zip
+*.7z
+*.rar
+*.iso
+
+# 만약 리소스를 Git에 포함해야 한다면 위 확장자 중 필요한 것만 주석 처리하세요.
+# 예:
+# !Assets/
+# !Textures/
+# !Models/
+
+# =========================
+# Code Editor 설정
+# =========================
+.idea/
+*.code-workspace
+.vscode/
+*.launch.json
+*.tasks.json
+
+# =========================
+# Reports / Profiling / Crash dumps
+# =========================
+*.dmp
+*.mdmp
+*.rpt
+*.etl
+*.perf
+*.nvp
