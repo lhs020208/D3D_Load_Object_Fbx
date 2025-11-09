@@ -434,7 +434,7 @@ void CGameFramework::BuildObjects()
 
 
 	m_pPlayer = new CPersonPlayer(m_pd3dDevice, m_pd3dCommandList, m_pScene->GetGraphicsRootSignature());
-	CMesh* pCubeMesh = new CMesh(m_pd3dDevice, m_pd3dCommandList, "Models/Tank.obj");
+	CMesh* pCubeMesh = new CMesh(m_pd3dDevice, m_pd3dCommandList, "Models/unitychan.fbx", 2);
 	m_pPlayer->SetMesh(0,pCubeMesh);
 	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
 	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, 6.0f, -10.0f));

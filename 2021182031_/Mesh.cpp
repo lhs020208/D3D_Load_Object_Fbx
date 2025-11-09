@@ -26,9 +26,12 @@ void CPolygon::SetVertex(int nIndex, CVertex& vertex)
 }
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
-CMesh::CMesh(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName)
+CMesh::CMesh(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName, int FileType)
 {
-	if (pstrFileName) LoadMeshFromFile(pd3dDevice, pd3dCommandList, pstrFileName);
+	if (pstrFileName) {
+		if (FileType == 1) LoadMeshFromOBJ(pd3dDevice, pd3dCommandList, pstrFileName);
+		if (FileType == 2) LoadMeshFromFBX(pd3dDevice, pd3dCommandList, pstrFileName);
+	}
 }
 CMesh::CMesh(int nPolygons)
 {
@@ -106,7 +109,7 @@ void CMesh::Render(ID3D12GraphicsCommandList *pd3dCommandList)
 	}
 }
 
-void CMesh::LoadMeshFromFile(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, char* filename)
+void CMesh::LoadMeshFromOBJ(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, char* filename)
 {
 	std::ifstream file(filename);
 	if (!file.is_open()) return;
@@ -230,6 +233,212 @@ void CMesh::LoadMeshFromFile(ID3D12Device* device, ID3D12GraphicsCommandList* cm
 	delete[] vbData;
 }
 
+void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const char* filename)
+{
+	FbxManager* pManager = FbxManager::Create();
+	FbxIOSettings* ios = FbxIOSettings::Create(pManager, IOSROOT);
+	pManager->SetIOSettings(ios);
+
+	FbxImporter* importer = FbxImporter::Create(pManager, "");
+	if (!importer->Initialize(filename, -1, pManager->GetIOSettings())) {
+		printf("[FBX] Failed to load file: %s\n", filename);
+		importer->Destroy();
+		pManager->Destroy();
+		return;
+	}
+
+	FbxScene* scene = FbxScene::Create(pManager, "scene");
+	importer->Import(scene);
+	importer->Destroy();
+
+	FbxGeometryConverter converter(pManager);
+	converter.Triangulate(scene, true);
+
+	// 단위 및 좌표계 보정
+	FbxAxisSystem sceneAxis = scene->GetGlobalSettings().GetAxisSystem();
+	FbxAxisSystem::DirectX.ConvertScene(scene);
+	FbxSystemUnit::m.ConvertScene(scene); // 미터 단위로 통일
+
+	// 메시 노드 탐색
+	FbxNode* rootNode = scene->GetRootNode();
+	if (!rootNode) { pManager->Destroy(); return; }
+
+	FbxMesh* fbxMesh = nullptr;
+	for (int i = 0; i < rootNode->GetChildCount(); ++i)
+	{
+		FbxNode* node = rootNode->GetChild(i);
+		if (node->GetMesh()) { fbxMesh = node->GetMesh(); break; }
+	}
+	if (!fbxMesh) { pManager->Destroy(); return; }
+
+	// ===== 정점/법선/UV 추출 =====
+	int nCtrlPoints = fbxMesh->GetControlPointsCount();
+	FbxVector4* ctrlPoints = fbxMesh->GetControlPoints();
+
+	m_nVertices = nCtrlPoints;
+	m_pxmf3Positions = new XMFLOAT3[m_nVertices];
+	m_pxmf3Normals = new XMFLOAT3[m_nVertices];
+	m_pxmf2TextureCoords = new XMFLOAT2[m_nVertices];
+
+	for (int i = 0; i < nCtrlPoints; ++i)
+	{
+		FbxVector4 p = ctrlPoints[i];
+		m_pxmf3Positions[i] = XMFLOAT3((float)p[0], (float)p[1], (float)p[2]);
+		m_pxmf3Normals[i] = XMFLOAT3(0, 1, 0);
+		m_pxmf2TextureCoords[i] = XMFLOAT2(0, 0);
+	}
+
+	// 노멀 (있다면)
+	if (fbxMesh->GetElementNormalCount() > 0)
+	{
+		FbxGeometryElementNormal* elemNormal = fbxMesh->GetElementNormal(0);
+		if (elemNormal->GetMappingMode() == FbxGeometryElement::eByControlPoint)
+		{
+			for (int i = 0; i < nCtrlPoints; ++i)
+			{
+				FbxVector4 n = elemNormal->GetDirectArray().GetAt(i);
+				m_pxmf3Normals[i] = XMFLOAT3((float)n[0], (float)n[1], (float)n[2]);
+			}
+		}
+	}
+
+	// ===== 인덱스 정보 =====
+	m_nIndices = fbxMesh->GetPolygonVertexCount();
+	m_pnIndices = new UINT[m_nIndices];
+	for (UINT i = 0; i < m_nIndices; ++i)
+		m_pnIndices[i] = static_cast<UINT>(fbxMesh->GetPolygonVertices()[i]);
+
+	// ===== 본 스켈레톤 정보 =====
+	m_Bones.clear();
+	m_BoneNameToIndex.clear();
+
+	std::vector<std::vector<std::pair<int, float>>> ctrlPointWeights(nCtrlPoints);
+
+	int skinCount = fbxMesh->GetDeformerCount(FbxDeformer::eSkin);
+	for (int s = 0; s < skinCount; ++s)
+	{
+		FbxSkin* skin = static_cast<FbxSkin*>(fbxMesh->GetDeformer(s, FbxDeformer::eSkin));
+		if (!skin) continue;
+
+		int clusterCount = skin->GetClusterCount();
+		for (int c = 0; c < clusterCount; ++c)
+		{
+			FbxCluster* cluster = skin->GetCluster(c);
+			if (!cluster->GetLink()) continue;
+
+			std::string boneName = cluster->GetLink()->GetName();
+			int boneIndex = (int)m_Bones.size();
+
+			// 본 추가
+			Bone bone;
+			bone.name = boneName;
+			bone.parentIndex = -1; // 이후에 Animator가 부모-자식 연결을 처리
+			FbxAMatrix matrix;
+			cluster->GetTransformLinkMatrix(matrix);
+			for (int i = 0; i < 4; ++i)
+				for (int j = 0; j < 4; ++j)
+					bone.offsetMatrix.m[i][j] = (float)matrix.Get(i, j);
+
+			m_Bones.push_back(bone);
+			m_BoneNameToIndex[boneName] = boneIndex;
+
+			// 이 본이 영향 주는 정점
+			int* indices = cluster->GetControlPointIndices();
+			double* weights = cluster->GetControlPointWeights();
+			int count = cluster->GetControlPointIndicesCount();
+			for (int i = 0; i < count; ++i)
+			{
+				int idx = indices[i];
+				double w = weights[i];
+				if (idx >= 0 && idx < nCtrlPoints)
+					ctrlPointWeights[idx].push_back({ boneIndex, (float)w });
+			}
+		}
+	}
+
+	// ===== 정점당 4개 본 제한 및 정규화 =====
+	m_pxu4BoneIndices = new XMUINT4[nCtrlPoints];
+	m_pxmf4BoneWeights = new XMFLOAT4[nCtrlPoints];
+
+	for (int i = 0; i < nCtrlPoints; ++i)
+	{
+		auto& list = ctrlPointWeights[i];
+		std::sort(list.begin(), list.end(), [](auto& a, auto& b) { return a.second > b.second; });
+		if (list.size() > 4) list.resize(4);
+
+		XMUINT4 bi = { 0,0,0,0 };
+		XMFLOAT4 bw = { 0,0,0,0 };
+
+		float sum = 0.0f;
+		for (size_t k = 0; k < list.size(); ++k) sum += list[k].second;
+		if (sum == 0) sum = 1.0f;
+		for (size_t k = 0; k < list.size(); ++k)
+		{
+			bi.x = (k > 0) ? bi.x : list[k].first;
+			if (k == 1) bi.y = list[k].first;
+			if (k == 2) bi.z = list[k].first;
+			if (k == 3) bi.w = list[k].first;
+
+			if (k == 0) bw.x = list[k].second / sum;
+			if (k == 1) bw.y = list[k].second / sum;
+			if (k == 2) bw.z = list[k].second / sum;
+			if (k == 3) bw.w = list[k].second / sum;
+		}
+		m_pxu4BoneIndices[i] = bi;
+		m_pxmf4BoneWeights[i] = bw;
+	}
+
+	EnableSkinning((int)m_Bones.size());
+
+	// ===== GPU 리소스 생성 =====
+	struct VertexSkinned { XMFLOAT3 pos; XMFLOAT3 normal; XMUINT4 bi; XMFLOAT4 bw; };
+	std::vector<VertexSkinned> vtx(m_nVertices);
+	for (UINT i = 0; i < m_nVertices; ++i)
+	{
+		vtx[i].pos = m_pxmf3Positions[i];
+		vtx[i].normal = m_pxmf3Normals[i];
+		vtx[i].bi = m_pxu4BoneIndices[i];
+		vtx[i].bw = m_pxmf4BoneWeights[i];
+	}
+
+	UINT vbSize = sizeof(VertexSkinned) * m_nVertices;
+	m_pd3dPositionBuffer = CreateBufferResource(device, cmdList, vtx.data(), vbSize,
+		D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, &m_pd3dPositionUploadBuffer);
+
+	m_nVertexBufferViews = 1;
+	m_pd3dVertexBufferViews = new D3D12_VERTEX_BUFFER_VIEW[1];
+	m_pd3dVertexBufferViews[0].BufferLocation = m_pd3dPositionBuffer->GetGPUVirtualAddress();
+	m_pd3dVertexBufferViews[0].StrideInBytes = sizeof(VertexSkinned);
+	m_pd3dVertexBufferViews[0].SizeInBytes = vbSize;
+
+	// 인덱스 버퍼
+	UINT ibSize = sizeof(UINT) * m_nIndices;
+	m_pd3dIndexBuffer = CreateBufferResource(device, cmdList, m_pnIndices, ibSize,
+		D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_INDEX_BUFFER, &m_pd3dIndexUploadBuffer);
+
+	m_d3dIndexBufferView.BufferLocation = m_pd3dIndexBuffer->GetGPUVirtualAddress();
+	m_d3dIndexBufferView.Format = DXGI_FORMAT_R32_UINT;
+	m_d3dIndexBufferView.SizeInBytes = ibSize;
+
+	// 바운딩 박스 계산
+	XMFLOAT3 min = m_pxmf3Positions[0], max = m_pxmf3Positions[0];
+	for (UINT i = 0; i < m_nVertices; ++i)
+	{
+		XMFLOAT3 v = m_pxmf3Positions[i];
+		if (v.x < min.x) min.x = v.x;
+		if (v.y < min.y) min.y = v.y;
+		if (v.z < min.z) min.z = v.z;
+		if (v.x > max.x) max.x = v.x;
+		if (v.y > max.y) max.y = v.y;
+		if (v.z > max.z) max.z = v.z;
+	}
+	XMFLOAT3 center = { (min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f, (min.z + max.z) * 0.5f };
+	XMFLOAT3 extent = { (max.x - min.x) * 0.5f, (max.y - min.y) * 0.5f, (max.z - min.z) * 0.5f };
+	m_xmOOBB = BoundingOrientedBox(center, extent, XMFLOAT4(0, 0, 0, 1));
+
+	pManager->Destroy();
+}
+
 void CMesh::EnableSkinning(int nBones)
 {
 	m_bSkinnedMesh = true;
@@ -276,62 +485,4 @@ BOOL CMesh::RayIntersectionByTriangle(XMVECTOR& xmRayOrigin, XMVECTOR& xmRayDire
 	if (bIntersected && (fHitDistance < *pfNearHitDistance)) *pfNearHitDistance = fHitDistance;
 
 	return(bIntersected);
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-
-CCubeMesh::CCubeMesh(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList,
-	float fWidth, float fHeight, float fDepth) : CMesh(6)
-{
-	// 1. 정점 설정
-	float w = fWidth * 0.5f, h = fHeight * 0.5f, d = fDepth * 0.5f;
-
-	XMFLOAT3 vertices[] = {
-		{-w, +h, -d}, {+w, +h, -d}, {+w, -h, -d}, {-w, -h, -d}, // Front
-		{-w, +h, +d}, {+w, +h, +d}, {+w, -h, +d}, {-w, -h, +d}  // Back
-	};
-	m_nVertices = _countof(vertices);
-	m_pxmf3Positions = new XMFLOAT3[m_nVertices];
-	memcpy(m_pxmf3Positions, vertices, sizeof(vertices));
-
-	// 2. 인덱스 설정 (삼각형 12개 → 36개 인덱스)
-	UINT indices[] = {
-		0,1,2, 0,2,3,  // Front
-		4,6,5, 4,7,6,  // Back
-		4,5,1, 4,1,0,  // Top
-		3,2,6, 3,6,7,  // Bottom
-		4,0,3, 4,3,7,  // Left
-		1,5,6, 1,6,2   // Right
-	};
-	m_nIndices = _countof(indices);
-	m_pnIndices = new UINT[m_nIndices];
-	memcpy(m_pnIndices, indices, sizeof(indices));
-
-	// 3. 정점 버퍼 생성
-	UINT vbSize = sizeof(XMFLOAT3) * m_nVertices;
-	m_pd3dPositionBuffer = CreateBufferResource(device, cmdList, m_pxmf3Positions, vbSize,
-		D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, &m_pd3dPositionUploadBuffer);
-
-	m_nVertexBufferViews = 1;
-	m_pd3dVertexBufferViews = new D3D12_VERTEX_BUFFER_VIEW[1];
-	m_pd3dVertexBufferViews[0].BufferLocation = m_pd3dPositionBuffer->GetGPUVirtualAddress();
-	m_pd3dVertexBufferViews[0].StrideInBytes = sizeof(XMFLOAT3);
-	m_pd3dVertexBufferViews[0].SizeInBytes = vbSize;
-
-	// 4. 인덱스 버퍼 생성
-	UINT ibSize = sizeof(UINT) * m_nIndices;
-	m_pd3dIndexBuffer = CreateBufferResource(device, cmdList, m_pnIndices, ibSize,
-		D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_INDEX_BUFFER, &m_pd3dIndexUploadBuffer);
-
-	m_d3dIndexBufferView.BufferLocation = m_pd3dIndexBuffer->GetGPUVirtualAddress();
-	m_d3dIndexBufferView.Format = DXGI_FORMAT_R32_UINT;
-	m_d3dIndexBufferView.SizeInBytes = ibSize;
-
-	m_xmOOBB.Center = XMFLOAT3(0.0f, 0.0f, 0.0f);
-	m_xmOOBB.Extents = XMFLOAT3(fWidth * 0.5f, fHeight * 0.5f, fDepth * 0.5f);
-}
-
-
-CCubeMesh::~CCubeMesh()
-{
 }

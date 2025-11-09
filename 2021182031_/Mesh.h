@@ -58,7 +58,7 @@ class CAnimator;
 class CMesh
 {
 public:
-	CMesh(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName = NULL);
+	CMesh(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName = NULL, int FileType = 1);
 	CMesh(int nPolygons);
 	virtual ~CMesh();
 
@@ -132,17 +132,7 @@ protected:
 public:
 	virtual void Render(ID3D12GraphicsCommandList *pd3dCommandList);
 
-	void LoadMeshFromFile(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName);
+	void LoadMeshFromOBJ(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName);
+	void LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const char* filename);
 	void EnableSkinning(int nBones);
-};
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-class CCubeMesh : public CMesh
-{
-public:
-	CCubeMesh(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList,
-		float fWidth = 1.0f, float fHeight = 1.0f, float fDepth = 1.0f);
-
-	virtual ~CCubeMesh();
 };

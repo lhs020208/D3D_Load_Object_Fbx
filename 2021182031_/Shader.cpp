@@ -207,3 +207,29 @@ D3D12_SHADER_BYTECODE CLightingShader::CreatePixelShader(ID3DBlob **ppd3dShaderB
 {
 	return(CShader::CompileShaderFromFile(L"Shaders.hlsl", "PSLighting", "ps_5_1", ppd3dShaderBlob));
 }
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+D3D12_INPUT_LAYOUT_DESC CSkinnedLightingShader::CreateInputLayout()
+{
+	// POSITION(12) + NORMAL(12) + BI(16, R32G32B32A32_UINT) + BW(16, R32G32B32A32_FLOAT)
+	D3D12_INPUT_ELEMENT_DESC* d = new D3D12_INPUT_ELEMENT_DESC[4];
+	d[0] = { "POSITION",     0, DXGI_FORMAT_R32G32B32_FLOAT,      0,  0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
+	d[1] = { "NORMAL",       0, DXGI_FORMAT_R32G32B32_FLOAT,      0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
+	d[2] = { "BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_UINT,    0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
+	d[3] = { "BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT,   0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
+
+	D3D12_INPUT_LAYOUT_DESC desc{};
+	desc.pInputElementDescs = d;
+	desc.NumElements = 4;
+	return desc;
+}
+
+D3D12_SHADER_BYTECODE CSkinnedLightingShader::CreateVertexShader(ID3DBlob** pp)
+{
+	// VSLightingSkinned »ç¿ë
+	return CShader::CompileShaderFromFile(L"Shaders.hlsl", "VSLightingSkinned", "vs_5_1", pp);
+}
+
+D3D12_SHADER_BYTECODE CSkinnedLightingShader::CreatePixelShader(ID3DBlob** pp)
+{
+	return CShader::CompileShaderFromFile(L"Shaders.hlsl", "PSLighting", "ps_5_1", pp);
+}

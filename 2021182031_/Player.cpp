@@ -284,7 +284,7 @@ CPersonPlayer::CPersonPlayer(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList
 
 	CreateShaderVariables(pd3dDevice, pd3dCommandList);
 
-	CLightingShader* pShader = new CLightingShader();
+	CSkinnedLightingShader* pShader = new CSkinnedLightingShader();
 	pShader->CreateShader(pd3dDevice, pd3dGraphicsRootSignature);
 	pShader->CreateShaderVariables(pd3dDevice, pd3dCommandList);
 

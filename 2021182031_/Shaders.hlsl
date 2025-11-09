@@ -30,11 +30,25 @@ cbuffer cbLightInfo : register(b3)
     float gf3LightColorZ;
 }
 
+static const uint MAX_BONES = 256;
+cbuffer cbBones : register(b4)
+{
+    float4x4 gBoneTransforms[MAX_BONES];
+};
+
 struct VS_INPUT
 {
 	float3		position : POSITION;
 	float3		normal : NORMAL;
 	float2		uv : TEXTURECOORD;
+};
+
+struct VS_INPUT_SKINNED
+{
+    float3 position : POSITION;
+    float3 normal : NORMAL;
+    uint4 bi : BLENDINDICES;
+    float4 bw : BLENDWEIGHT;
 };
 
 struct VS_OUTPUT
@@ -45,6 +59,7 @@ struct VS_OUTPUT
 	float3		normalW : NORMAL1;
 	float2		uv : TEXTURECOORD;
 };
+
 float4 VSPseudoLighting(float4 position : POSITION) : SV_POSITION
 {
     return position;
@@ -61,6 +76,17 @@ VS_OUTPUT VSLighting(VS_INPUT input)
 	output.uv = input.uv;
 
 	return(output);
+}
+
+VS_OUTPUT VSLightingSkinned(VS_INPUT_SKINNED input)
+{
+    VS_OUTPUT output;
+    output.positionW = mul(float4(input.position, 1.0f), gmtxWorld).xyz;
+    output.positionH = mul(mul(float4(output.positionW, 1.0f), gmtxView), gmtxProjection);
+    output.normalW = mul(float4(input.normal, 0.0f), gmtxWorld).xyz;
+    output.normal = input.normal;
+    output.uv = float2(0.0f, 0.0f);
+    return output;
 }
 
 static float3 gf3AmbientLightColor = float3(1.0f, 1.0f, 1.0f);

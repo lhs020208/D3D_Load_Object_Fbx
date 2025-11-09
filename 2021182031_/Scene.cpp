@@ -25,7 +25,7 @@ ID3D12RootSignature *CScene::CreateGraphicsRootSignature(ID3D12Device *pd3dDevic
 {
 	ID3D12RootSignature *pd3dGraphicsRootSignature = NULL;
 
-	D3D12_ROOT_PARAMETER pd3dRootParameters[4];
+	D3D12_ROOT_PARAMETER pd3dRootParameters[5];
 	pd3dRootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
 	pd3dRootParameters[0].Constants.Num32BitValues = 4; //Time, ElapsedTime, xCursor, yCursor
 	pd3dRootParameters[0].Constants.ShaderRegister = 0; //Time
@@ -44,16 +44,20 @@ ID3D12RootSignature *CScene::CreateGraphicsRootSignature(ID3D12Device *pd3dDevic
 	pd3dRootParameters[2].Constants.RegisterSpace = 0;
 	pd3dRootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-	pd3dRootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-	pd3dRootParameters[3].Constants.Num32BitValues = 6; // float 6개 + 패딩 2개
-	pd3dRootParameters[3].Constants.ShaderRegister = 3; // b3 
-	pd3dRootParameters[3].Constants.RegisterSpace = 0;
+	pd3dRootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	pd3dRootParameters[3].Descriptor.ShaderRegister = 3;  // register(b3)
+	pd3dRootParameters[3].Descriptor.RegisterSpace = 0;
 	pd3dRootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	pd3dRootParameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	pd3dRootParameters[4].Descriptor.ShaderRegister = 4;
+	pd3dRootParameters[4].Descriptor.RegisterSpace = 0;
+	pd3dRootParameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
 	D3D12_ROOT_SIGNATURE_FLAGS d3dRootSignatureFlags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 	D3D12_ROOT_SIGNATURE_DESC d3dRootSignatureDesc;
 	::ZeroMemory(&d3dRootSignatureDesc, sizeof(D3D12_ROOT_SIGNATURE_DESC));
-	d3dRootSignatureDesc.NumParameters = 4;
+	d3dRootSignatureDesc.NumParameters = 5;
 	d3dRootSignatureDesc.pParameters = pd3dRootParameters;
 	d3dRootSignatureDesc.NumStaticSamplers = 0;
 	d3dRootSignatureDesc.pStaticSamplers = NULL;
@@ -107,9 +111,35 @@ void CScene::BuildGraphicsRootSignature(ID3D12Device* pd3dDevice)
 {
 	m_pd3dGraphicsRootSignature = CreateGraphicsRootSignature(pd3dDevice);
 }
+void CScene::CreateLightConstantBuffer(ID3D12Device* device)
+{
+	D3D12_HEAP_PROPERTIES heapProps = {};
+	heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
 
+	D3D12_RESOURCE_DESC resDesc = {};
+	resDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	resDesc.Width = 256; // 256바이트 정렬
+	resDesc.Height = 1;
+	resDesc.DepthOrArraySize = 1;
+	resDesc.MipLevels = 1;
+	resDesc.SampleDesc.Count = 1;
+	resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+	device->CreateCommittedResource(
+		&heapProps, D3D12_HEAP_FLAG_NONE,
+		&resDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr, IID_PPV_ARGS(&m_pLightCB)
+	);
+}
 //탱크 Scene////////////////////////////////////////////////////////////////////////////////////////////////
 CTankScene::CTankScene(CPlayer* pPlayer) : CScene(pPlayer) {}
+
+struct LIGHT_CB
+{
+	XMFLOAT3 LightDirection; float pad1 = 0.0f;
+	XMFLOAT3 LightColor;     float pad2 = 0.0f;
+};
+
 void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList* pd3dCommandList)
 {
 	m_pd3dGraphicsRootSignature = CreateGraphicsRootSignature(pd3dDevice);
@@ -117,44 +147,50 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandLis
 	pShader->CreateShader(pd3dDevice, m_pd3dGraphicsRootSignature);
 	pShader->CreateShaderVariables(pd3dDevice, pd3dCommandList);
 
-	using namespace std;
-	default_random_engine dre{ random_device{}() };
-	uniform_real_distribution<float> uid{ 0.0f,1.0f };
+	LIGHT_CB lightData = { m_xmf3LightDirection, 0.0f, m_xmf3LightColor, 0.0f };
 
-	uniform_real_distribution<float> uid_x{ 0,100.0f };
-	uniform_real_distribution<float> uid_z{ 0,100.0f };
-	uniform_real_distribution<float> uid_rot{ 0,360.0f };
+	D3D12_HEAP_PROPERTIES heapProps = {};
+	heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
+	heapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+	heapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+	heapProps.CreationNodeMask = 1;
+	heapProps.VisibleNodeMask = 1;
 
-	for (int i = 0; i < m_nTanks; i++)
-	{
-		float red = uid(dre);
-		float green = uid(dre);
-		float blue = uid(dre);
+	// 리소스 디스크립터
+	D3D12_RESOURCE_DESC resDesc = {};
+	resDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	resDesc.Alignment = 0;
+	resDesc.Width = 256;
+	resDesc.Height = 1;
+	resDesc.DepthOrArraySize = 1;
+	resDesc.MipLevels = 1;
+	resDesc.Format = DXGI_FORMAT_UNKNOWN;
+	resDesc.SampleDesc.Count = 1;
+	resDesc.SampleDesc.Quality = 0;
+	resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	resDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
-		m_pTank[i] = nullptr;
-		m_pTank[i] = new CTankObject();
-		CMesh* pTankMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/Tank.obj");
-		m_pTank[i]->SetMesh(0,pTankMesh);
-		m_pTank[i]->SetShader(pShader);
-		m_pTank[i]->SetColor(XMFLOAT3(red, green, blue));
-		m_pTank[i]->SetPosition(uid_x(dre) - 50.0f, 0.0f, uid_z(dre) - 50.0f);
-		m_pTank[i]->Rotate(0.0f, uid_rot(dre), 0.0f);
-		m_pTank[i]->UpdateBoundingBox();
-	}
+	// 리소스 생성
+	HRESULT hr = pd3dDevice->CreateCommittedResource(
+		&heapProps, D3D12_HEAP_FLAG_NONE,
+		&resDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr, IID_PPV_ARGS(&m_pLightCB)
+	);
+	if (FAILED(hr)) OutputDebugString(L"CreateCommittedResource for LightCB failed!\n");
+
+	// 데이터 복사 (한 번만)
+	void* pMapped = nullptr;
+	m_pLightCB->Map(0, nullptr, &pMapped);
+	memcpy(pMapped, &lightData, sizeof(LIGHT_CB));
+	m_pLightCB->Unmap(0, nullptr);
 }
 
 void CTankScene::ReleaseObjects()
 {
 	if (m_pd3dGraphicsRootSignature) m_pd3dGraphicsRootSignature->Release();
-	for (int i = 0; i < m_nTanks; i++) {
-		if (m_pTank[i])delete m_pTank[i];
-	}
 }
 void CTankScene::ReleaseUploadBuffers()
 {
-	for (int i = 0; i < m_nTanks; i++) {
-		if (m_pTank[i]) m_pTank[i]->ReleaseUploadBuffers();
-	}
 }
 void CTankScene::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera)
 {
@@ -168,13 +204,12 @@ void CTankScene::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCa
 		m_xmf3LightColor.y,
 		m_xmf3LightColor.z,
 	};
-	pd3dCommandList->SetGraphicsRoot32BitConstants(3, 6, light, 0);
+
+	// 렌더 시 바인딩
+	if (m_pLightCB)
+		pd3dCommandList->SetGraphicsRootConstantBufferView(3, m_pLightCB->GetGPUVirtualAddress());
 
 	if (m_pPlayer) m_pPlayer->Render(pd3dCommandList, pCamera);
-
-	for (int i = 0; i < m_nTanks; i++) {
-		m_pTank[i]->Render(pd3dCommandList, pCamera);
-	}
 }
 void CTankScene::OnProcessingKeyboardMessage(HWND hWnd, UINT nMessageID, WPARAM wParam, LPARAM lParam)
 {
@@ -236,16 +271,6 @@ CGameObject* CTankScene::PickObjectPointedByCursor(int xClient, int yClient, CCa
 
 	float fNearestHitDistance = FLT_MAX;
 	CGameObject* pNearestObject = NULL;
-	for (int i = 0; i < m_nTanks; i++) {
-		if (m_pTank[i])
-		{
-			int hit = m_pTank[i]->PickObjectByRayIntersection(xmvPickPosition, xmmtxView, &fNearestHitDistance);
-			if (hit > 0)
-			{
-				pNearestObject = m_pTank[i];
-			}
-		}
-	}
 	return(pNearestObject);
 
 }
@@ -255,13 +280,6 @@ void CTankScene::OnProcessingMouseMessage(HWND hWnd, UINT nMessageID, WPARAM wPa
 
 void CTankScene::Animate(float fElapsedTime)
 {
-	for (int i = 0; i < m_nTanks; i++) {
-		if (m_pTank[i]) {
-
-			m_pTank[i]->Animate(fElapsedTime);
-			XMFLOAT3 xmf3Position = m_pTank[i]->GetPosition();
-		}
-	}
 
 	XMFLOAT3 xmf3Position = m_pPlayer->GetPosition();
 	m_pPlayer->Animate(fElapsedTime);

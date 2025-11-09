@@ -31,6 +31,14 @@ public:
 	virtual void ReleaseUploadBuffers();
 	void SetPlayer(CPlayer* pPlayer) { m_pPlayer = pPlayer; }
 	void BuildGraphicsRootSignature(ID3D12Device* pd3dDevice);
+	void CreateLightConstantBuffer(ID3D12Device* device);
+
+	ID3D12Resource* m_pDefaultBoneCB = nullptr; // b4용 디폴트 CBV
+	ID3D12Resource* m_pLightCB = nullptr;
+
+	D3D12_GPU_VIRTUAL_ADDRESS GetDefaultBoneCBAddress() const {
+		return m_pDefaultBoneCB ? m_pDefaultBoneCB->GetGPUVirtualAddress() : 0;
+	}
 protected:
 	CPlayer* m_pPlayer = NULL;
 protected:
@@ -56,7 +64,4 @@ public:
 private:
 	XMFLOAT3 m_xmf3LightDirection = XMFLOAT3(0.0f, -1.0f, 0.0f);
 	XMFLOAT3 m_xmf3LightColor = XMFLOAT3(1.0f, 1.0f, 1.0f);
-
-	static const int m_nTanks = 10;
-	CTankObject* m_pTank[m_nTanks];
 };
