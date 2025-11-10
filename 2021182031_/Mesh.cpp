@@ -551,8 +551,9 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                 tri[i].pos = ToXM3(pw);
                 tri[i].nrm = ToXM3(nw);
             }
-
-            // === 추가 시작: 축 보정 적용 ===
+            /*
+            //애니메이션 사용 시 이거 하면 좆됨
+            // === 축 보정 적용 ===
             AxisFix fix;
             fix.flipX = false;
             fix.flipY = true;   // 상하 반전 교정
@@ -565,7 +566,7 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
 
             int order[3] = { 0,1,2 };
             if (finalFlip) std::swap(order[1], order[2]);
-            // === 추가 끝 ===
+            */
 
             // push
             outV.push_back(tri[0]);
