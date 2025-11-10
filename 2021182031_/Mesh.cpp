@@ -92,6 +92,7 @@ void CMesh::ReleaseUploadBuffers()
 
 void CMesh::Render(ID3D12GraphicsCommandList *pd3dCommandList)
 {
+
 	pd3dCommandList->IASetPrimitiveTopology(m_d3dPrimitiveTopology);
 	pd3dCommandList->IASetVertexBuffers(m_nSlot, m_nVertexBufferViews, m_pd3dVertexBufferViews);
 	if (m_bSkinnedMesh && m_pd3dcbBoneTransforms)
@@ -235,13 +236,15 @@ void CMesh::LoadMeshFromOBJ(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
 
 void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const char* filename)
 {
+	// ===== FBX 매니저/임포터 생성 =====
 	FbxManager* pManager = FbxManager::Create();
 	FbxIOSettings* ios = FbxIOSettings::Create(pManager, IOSROOT);
 	pManager->SetIOSettings(ios);
 
 	FbxImporter* importer = FbxImporter::Create(pManager, "");
-	if (!importer->Initialize(filename, -1, pManager->GetIOSettings())) {
-		printf("[FBX] Failed to load file: %s\n", filename);
+	if (!importer->Initialize(filename, -1, pManager->GetIOSettings()))
+	{
+		OutputDebugStringA("[FBX] Importer 초기화 실패\n");
 		importer->Destroy();
 		pManager->Destroy();
 		return;
@@ -251,167 +254,102 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
 	importer->Import(scene);
 	importer->Destroy();
 
+	// ===== 삼각형화 =====
 	FbxGeometryConverter converter(pManager);
 	converter.Triangulate(scene, true);
 
-	// 단위 및 좌표계 보정
-	FbxAxisSystem sceneAxis = scene->GetGlobalSettings().GetAxisSystem();
-	FbxAxisSystem::DirectX.ConvertScene(scene);
-	FbxSystemUnit::m.ConvertScene(scene); // 미터 단위로 통일
-
-	// 메시 노드 탐색
+	// ===== 메시 노드 찾기 =====
 	FbxNode* rootNode = scene->GetRootNode();
-	if (!rootNode) { pManager->Destroy(); return; }
+	if (!rootNode)
+	{
+		OutputDebugStringA("[FBX] Root 노드 없음\n");
+		pManager->Destroy();
+		return;
+	}
 
 	FbxMesh* fbxMesh = nullptr;
-	for (int i = 0; i < rootNode->GetChildCount(); ++i)
+	std::function<FbxMesh* (FbxNode*)> FindMeshRecursive = [&](FbxNode* node) -> FbxMesh*
+		{
+			if (node->GetMesh()) return node->GetMesh();
+			for (int i = 0; i < node->GetChildCount(); ++i)
+			{
+				if (auto found = FindMeshRecursive(node->GetChild(i))) return found;
+			}
+			return nullptr;
+		};
+	fbxMesh = FindMeshRecursive(rootNode);
+	if (!fbxMesh)
 	{
-		FbxNode* node = rootNode->GetChild(i);
-		if (node->GetMesh()) { fbxMesh = node->GetMesh(); break; }
+		OutputDebugStringA("[FBX] 메시 노드 없음\n");
+		pManager->Destroy();
+		return;
 	}
-	if (!fbxMesh) { pManager->Destroy(); return; }
 
-	// ===== 정점/법선/UV 추출 =====
-	int nCtrlPoints = fbxMesh->GetControlPointsCount();
-	FbxVector4* ctrlPoints = fbxMesh->GetControlPoints();
+	// ===== 정점 / 인덱스 데이터 추출 =====
+	struct Vertex { XMFLOAT3 pos; XMFLOAT3 normal; };
+	std::vector<Vertex> vertices;
+	std::vector<UINT> indices;
 
-	m_nVertices = nCtrlPoints;
+	int polygonCount = fbxMesh->GetPolygonCount();
+	vertices.reserve(polygonCount * 3);
+	indices.reserve(polygonCount * 3);
+
+	for (int p = 0; p < polygonCount; ++p)
+	{
+		for (int v = 0; v < 3; ++v)
+		{
+			int ctrlIdx = fbxMesh->GetPolygonVertex(p, v);
+			FbxVector4 cp = fbxMesh->GetControlPointAt(ctrlIdx);
+			FbxVector4 n;
+			fbxMesh->GetPolygonVertexNormal(p, v, n);
+
+			Vertex vert;
+			vert.pos = XMFLOAT3((float)cp[0], (float)cp[1], (float)cp[2]);
+			vert.normal = XMFLOAT3((float)n[0], (float)n[1], (float)n[2]);
+
+			vertices.push_back(vert);
+			indices.push_back((UINT)vertices.size() - 1);
+		}
+	}
+
+	m_nVertices = (UINT)vertices.size();
+	m_nIndices = (UINT)indices.size();
+
+	// ===== 메모리 복사 =====
+	if (m_pxmf3Positions) delete[] m_pxmf3Positions;
 	m_pxmf3Positions = new XMFLOAT3[m_nVertices];
+	for (UINT i = 0; i < m_nVertices; ++i)
+		m_pxmf3Positions[i] = vertices[i].pos;
+
+	if (m_pxmf3Normals) delete[] m_pxmf3Normals;
 	m_pxmf3Normals = new XMFLOAT3[m_nVertices];
-	m_pxmf2TextureCoords = new XMFLOAT2[m_nVertices];
+	for (UINT i = 0; i < m_nVertices; ++i)
+		m_pxmf3Normals[i] = vertices[i].normal;
 
-	for (int i = 0; i < nCtrlPoints; ++i)
-	{
-		FbxVector4 p = ctrlPoints[i];
-		m_pxmf3Positions[i] = XMFLOAT3((float)p[0], (float)p[1], (float)p[2]);
-		m_pxmf3Normals[i] = XMFLOAT3(0, 1, 0);
-		m_pxmf2TextureCoords[i] = XMFLOAT2(0, 0);
-	}
-
-	// 노멀 (있다면)
-	if (fbxMesh->GetElementNormalCount() > 0)
-	{
-		FbxGeometryElementNormal* elemNormal = fbxMesh->GetElementNormal(0);
-		if (elemNormal->GetMappingMode() == FbxGeometryElement::eByControlPoint)
-		{
-			for (int i = 0; i < nCtrlPoints; ++i)
-			{
-				FbxVector4 n = elemNormal->GetDirectArray().GetAt(i);
-				m_pxmf3Normals[i] = XMFLOAT3((float)n[0], (float)n[1], (float)n[2]);
-			}
-		}
-	}
-
-	// ===== 인덱스 정보 =====
-	m_nIndices = fbxMesh->GetPolygonVertexCount();
+	if (m_pnIndices) delete[] m_pnIndices;
 	m_pnIndices = new UINT[m_nIndices];
-	for (UINT i = 0; i < m_nIndices; ++i)
-		m_pnIndices[i] = static_cast<UINT>(fbxMesh->GetPolygonVertices()[i]);
+	memcpy(m_pnIndices, indices.data(), sizeof(UINT) * m_nIndices);
 
-	// ===== 본 스켈레톤 정보 =====
-	m_Bones.clear();
-	m_BoneNameToIndex.clear();
-
-	std::vector<std::vector<std::pair<int, float>>> ctrlPointWeights(nCtrlPoints);
-
-	int skinCount = fbxMesh->GetDeformerCount(FbxDeformer::eSkin);
-	for (int s = 0; s < skinCount; ++s)
-	{
-		FbxSkin* skin = static_cast<FbxSkin*>(fbxMesh->GetDeformer(s, FbxDeformer::eSkin));
-		if (!skin) continue;
-
-		int clusterCount = skin->GetClusterCount();
-		for (int c = 0; c < clusterCount; ++c)
-		{
-			FbxCluster* cluster = skin->GetCluster(c);
-			if (!cluster->GetLink()) continue;
-
-			std::string boneName = cluster->GetLink()->GetName();
-			int boneIndex = (int)m_Bones.size();
-
-			// 본 추가
-			Bone bone;
-			bone.name = boneName;
-			bone.parentIndex = -1; // 이후에 Animator가 부모-자식 연결을 처리
-			FbxAMatrix matrix;
-			cluster->GetTransformLinkMatrix(matrix);
-			for (int i = 0; i < 4; ++i)
-				for (int j = 0; j < 4; ++j)
-					bone.offsetMatrix.m[i][j] = (float)matrix.Get(i, j);
-
-			m_Bones.push_back(bone);
-			m_BoneNameToIndex[boneName] = boneIndex;
-
-			// 이 본이 영향 주는 정점
-			int* indices = cluster->GetControlPointIndices();
-			double* weights = cluster->GetControlPointWeights();
-			int count = cluster->GetControlPointIndicesCount();
-			for (int i = 0; i < count; ++i)
-			{
-				int idx = indices[i];
-				double w = weights[i];
-				if (idx >= 0 && idx < nCtrlPoints)
-					ctrlPointWeights[idx].push_back({ boneIndex, (float)w });
-			}
-		}
-	}
-
-	// ===== 정점당 4개 본 제한 및 정규화 =====
-	m_pxu4BoneIndices = new XMUINT4[nCtrlPoints];
-	m_pxmf4BoneWeights = new XMFLOAT4[nCtrlPoints];
-
-	for (int i = 0; i < nCtrlPoints; ++i)
-	{
-		auto& list = ctrlPointWeights[i];
-		std::sort(list.begin(), list.end(), [](auto& a, auto& b) { return a.second > b.second; });
-		if (list.size() > 4) list.resize(4);
-
-		XMUINT4 bi = { 0,0,0,0 };
-		XMFLOAT4 bw = { 0,0,0,0 };
-
-		float sum = 0.0f;
-		for (size_t k = 0; k < list.size(); ++k) sum += list[k].second;
-		if (sum == 0) sum = 1.0f;
-		for (size_t k = 0; k < list.size(); ++k)
-		{
-			bi.x = (k > 0) ? bi.x : list[k].first;
-			if (k == 1) bi.y = list[k].first;
-			if (k == 2) bi.z = list[k].first;
-			if (k == 3) bi.w = list[k].first;
-
-			if (k == 0) bw.x = list[k].second / sum;
-			if (k == 1) bw.y = list[k].second / sum;
-			if (k == 2) bw.z = list[k].second / sum;
-			if (k == 3) bw.w = list[k].second / sum;
-		}
-		m_pxu4BoneIndices[i] = bi;
-		m_pxmf4BoneWeights[i] = bw;
-	}
-
-	EnableSkinning((int)m_Bones.size());
-
-	// ===== GPU 리소스 생성 =====
-	struct VertexSkinned { XMFLOAT3 pos; XMFLOAT3 normal; XMUINT4 bi; XMFLOAT4 bw; };
-	std::vector<VertexSkinned> vtx(m_nVertices);
+	// ===== GPU 버퍼 생성 (OBJ 방식 동일) =====
+	struct VBData { XMFLOAT3 pos; XMFLOAT3 normal; };
+	std::unique_ptr<VBData[]> vbData(new VBData[m_nVertices]);
 	for (UINT i = 0; i < m_nVertices; ++i)
 	{
-		vtx[i].pos = m_pxmf3Positions[i];
-		vtx[i].normal = m_pxmf3Normals[i];
-		vtx[i].bi = m_pxu4BoneIndices[i];
-		vtx[i].bw = m_pxmf4BoneWeights[i];
+		vbData[i].pos = vertices[i].pos;
+		vbData[i].normal = vertices[i].normal;
 	}
 
-	UINT vbSize = sizeof(VertexSkinned) * m_nVertices;
-	m_pd3dPositionBuffer = CreateBufferResource(device, cmdList, vtx.data(), vbSize,
+	UINT vbSize = sizeof(VBData) * m_nVertices;
+	m_pd3dPositionBuffer = CreateBufferResource(device, cmdList, vbData.get(), vbSize,
 		D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, &m_pd3dPositionUploadBuffer);
 
 	m_nVertexBufferViews = 1;
 	m_pd3dVertexBufferViews = new D3D12_VERTEX_BUFFER_VIEW[1];
 	m_pd3dVertexBufferViews[0].BufferLocation = m_pd3dPositionBuffer->GetGPUVirtualAddress();
-	m_pd3dVertexBufferViews[0].StrideInBytes = sizeof(VertexSkinned);
+	m_pd3dVertexBufferViews[0].StrideInBytes = sizeof(VBData);
 	m_pd3dVertexBufferViews[0].SizeInBytes = vbSize;
 
-	// 인덱스 버퍼
+	// ===== 인덱스 버퍼 생성 =====
 	UINT ibSize = sizeof(UINT) * m_nIndices;
 	m_pd3dIndexBuffer = CreateBufferResource(device, cmdList, m_pnIndices, ibSize,
 		D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_INDEX_BUFFER, &m_pd3dIndexUploadBuffer);
@@ -420,24 +358,42 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
 	m_d3dIndexBufferView.Format = DXGI_FORMAT_R32_UINT;
 	m_d3dIndexBufferView.SizeInBytes = ibSize;
 
-	// 바운딩 박스 계산
-	XMFLOAT3 min = m_pxmf3Positions[0], max = m_pxmf3Positions[0];
-	for (UINT i = 0; i < m_nVertices; ++i)
+	// ===== Bounding Box 계산 =====
+	XMFLOAT3 min = vertices[0].pos, max = vertices[0].pos;
+	for (const auto& v : vertices)
 	{
-		XMFLOAT3 v = m_pxmf3Positions[i];
-		if (v.x < min.x) min.x = v.x;
-		if (v.y < min.y) min.y = v.y;
-		if (v.z < min.z) min.z = v.z;
-		if (v.x > max.x) max.x = v.x;
-		if (v.y > max.y) max.y = v.y;
-		if (v.z > max.z) max.z = v.z;
+		if (v.pos.x < min.x) min.x = v.pos.x;
+		if (v.pos.y < min.y) min.y = v.pos.y;
+		if (v.pos.z < min.z) min.z = v.pos.z;
+		if (v.pos.x > max.x) max.x = v.pos.x;
+		if (v.pos.y > max.y) max.y = v.pos.y;
+		if (v.pos.z > max.z) max.z = v.pos.z;
 	}
-	XMFLOAT3 center = { (min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f, (min.z + max.z) * 0.5f };
-	XMFLOAT3 extent = { (max.x - min.x) * 0.5f, (max.y - min.y) * 0.5f, (max.z - min.z) * 0.5f };
+	XMFLOAT3 center = {
+		(min.x + max.x) * 0.5f,
+		(min.y + max.y) * 0.5f,
+		(min.z + max.z) * 0.5f
+	};
+	XMFLOAT3 extent = {
+		(max.x - min.x) * 0.5f,
+		(max.y - min.y) * 0.5f,
+		(max.z - min.z) * 0.5f
+	};
 	m_xmOOBB = BoundingOrientedBox(center, extent, XMFLOAT4(0, 0, 0, 1));
+
+	// ===== 로그 출력 =====
+	std::ostringstream done;
+	done << "[FBX] Static Mesh Loaded: " << filename << "\n"
+		<< "       Vertices: " << m_nVertices << "\n"
+		<< "       Indices : " << m_nIndices << "\n"
+		<< "       VB Size  : " << vbSize << " bytes\n"
+		<< "       IB Size  : " << ibSize << " bytes\n";
+	OutputDebugStringA(done.str().c_str());
 
 	pManager->Destroy();
 }
+
+
 
 void CMesh::EnableSkinning(int nBones)
 {

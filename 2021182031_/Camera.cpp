@@ -317,10 +317,10 @@ void CThirdPersonCamera::Update(XMFLOAT3& xmf3LookAt, float fTimeElapsed)
 			m_xmf3Position = xmf3Position;
 
 			// 7. LookAt 적용 (위치를 바라보게)
-			SetLookAt(m_pPlayer->m_xmf3Position, XMFLOAT3(0.0f, 1.0f, 0.0f));
+			//SetLookAt(m_pPlayer->m_xmf3Position, XMFLOAT3(0.0f, 1.0f, 0.0f));
 
 			// 8. 뷰 행렬 갱신
-			GenerateViewMatrix();
+			//GenerateViewMatrix();
 		}
 		else
 		{
@@ -338,6 +338,7 @@ void CThirdPersonCamera::Update(XMFLOAT3& xmf3LookAt, float fTimeElapsed)
 
 void CThirdPersonCamera::SetLookAt(XMFLOAT3& xmf3LookAt)
 {
+	
 	XMVECTOR eye = XMLoadFloat3(&m_xmf3Position);
 	XMVECTOR at = XMLoadFloat3(&xmf3LookAt);
 	XMVECTOR dir = XMVectorSubtract(at, eye);

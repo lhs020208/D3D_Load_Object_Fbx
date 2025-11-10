@@ -144,8 +144,9 @@ void CPlayer::Update(float fTimeElapsed)
 
 	if (m_pPlayerUpdatedContext) OnPlayerUpdateCallback(fTimeElapsed);
 
+	
 	DWORD nCurrentCameraMode = m_pCamera->GetMode();
-	if (nCurrentCameraMode == THIRD_PERSON_CAMERA) m_pCamera->Update(m_xmf3Position, fTimeElapsed);
+	//if (nCurrentCameraMode == THIRD_PERSON_CAMERA) m_pCamera->Update(m_xmf3Position, fTimeElapsed);
 	if (m_pCameraUpdatedContext) OnCameraUpdateCallback(fTimeElapsed);
 	//if (nCurrentCameraMode == THIRD_PERSON_CAMERA) m_pCamera->SetLookAt(m_xmf3Position);
 	m_pCamera->RegenerateViewMatrix();
@@ -159,6 +160,7 @@ void CPlayer::Update(float fTimeElapsed)
 	swprintf_s(buffer, L"[PLAYER POS] x: %.3f, y: %.3f, z: %.3f\n",
 		m_xmf3Position.x, m_xmf3Position.y, m_xmf3Position.z);
 	//OutputDebugString(buffer);
+	
 }
 
 CCamera *CPlayer::OnChangeCamera(DWORD nNewCameraMode, DWORD nCurrentCameraMode)
@@ -199,7 +201,15 @@ void CPlayer::SetPosition(float x, float y, float z)
 void CPlayer::SetCameraOffset(XMFLOAT3& xmf3CameraOffset)
 {
 	m_xmf3CameraOffset = xmf3CameraOffset;
-	m_pCamera->SetLookAt(Vector3::Add(m_xmf3Position, m_xmf3CameraOffset), m_xmf3Position, m_xmf3Up);
+
+	// 카메라 실제 위치
+	XMFLOAT3 camPos = Vector3::Add(m_xmf3Position, m_xmf3CameraOffset);
+
+	// 위를 더 보게 하고 싶으면 Y만 살짝 올리면 됨
+	XMFLOAT3 target = m_xmf3Position;
+	target.y += 100.0f;   // ← 여기가 lookAt 조정 부분
+
+	m_pCamera->SetLookAt(camPos, target, m_xmf3Up);
 	m_pCamera->GenerateViewMatrix();
 }
 

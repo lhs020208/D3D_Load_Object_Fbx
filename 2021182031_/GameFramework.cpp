@@ -432,15 +432,10 @@ void CGameFramework::BuildObjects()
 	m_pScene->BuildGraphicsRootSignature(m_pd3dDevice); // 따로 분리한 함수
 	auto pRootSignature = m_pScene->GetGraphicsRootSignature();
 
-
 	m_pPlayer = new CPersonPlayer(m_pd3dDevice, m_pd3dCommandList, m_pScene->GetGraphicsRootSignature());
-	CMesh* pCubeMesh = new CMesh(m_pd3dDevice, m_pd3dCommandList, "Models/unitychan.fbx", 2);
-	m_pPlayer->SetMesh(0,pCubeMesh);
-	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
-	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, 6.0f, -10.0f));
 	m_pCamera = m_pPlayer->GetCamera();
-
 	m_pScene->SetPlayer(m_pPlayer);
+
 	if (m_pScene) m_pScene->BuildObjects(m_pd3dDevice, m_pd3dCommandList);
 
 	m_pd3dCommandList->Close();

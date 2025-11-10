@@ -80,6 +80,7 @@ VS_OUTPUT VSLighting(VS_INPUT input)
 
 VS_OUTPUT VSLightingSkinned(VS_INPUT_SKINNED input)
 {
+	
     VS_OUTPUT output;
     output.positionW = mul(float4(input.position, 1.0f), gmtxWorld).xyz;
     output.positionH = mul(mul(float4(output.positionW, 1.0f), gmtxView), gmtxProjection);

@@ -19,6 +19,7 @@
 #include <Mmsystem.h>
 #include <random>
 #include <sstream>
+#include <iomanip>
 
 #include <string>
 #include <wrl.h>
@@ -29,6 +30,7 @@
 #include <wchar.h>
 
 #include <vector>
+#include <functional>
 #include <unordered_map>
 using namespace std;
 

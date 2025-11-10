@@ -142,8 +142,8 @@ struct LIGHT_CB
 
 void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList* pd3dCommandList)
 {
-	m_pd3dGraphicsRootSignature = CreateGraphicsRootSignature(pd3dDevice);
-	CLightingShader* pShader = new CLightingShader();
+	//m_pd3dGraphicsRootSignature = CreateGraphicsRootSignature(pd3dDevice);
+	CSkinnedLightingShader* pShader = new CSkinnedLightingShader();
 	pShader->CreateShader(pd3dDevice, m_pd3dGraphicsRootSignature);
 	pShader->CreateShaderVariables(pd3dDevice, pd3dCommandList);
 
@@ -183,6 +183,15 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandLis
 	m_pLightCB->Map(0, nullptr, &pMapped);
 	memcpy(pMapped, &lightData, sizeof(LIGHT_CB));
 	m_pLightCB->Unmap(0, nullptr);
+
+	CMesh* pCubeMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/HumanCharacterDummy_F.fbx", 2);
+	m_pPlayer->SetMesh(0, pCubeMesh);
+	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
+	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, 100.0f, -150.0f));
+
+	m_pPlayer -> CreateShaderVariables(pd3dDevice, pd3dCommandList);
+	m_pPlayer -> SetShader(pShader);
+
 }
 
 void CTankScene::ReleaseObjects()
