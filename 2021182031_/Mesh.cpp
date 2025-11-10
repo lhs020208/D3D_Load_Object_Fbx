@@ -25,6 +25,24 @@ void CPolygon::SetVertex(int nIndex, CVertex& vertex)
 	}
 }
 /////////////////////////////////////////////////////////////////////////////////////////////////////
+struct AxisFix {
+    bool flipX = false;   // 좌우
+    bool flipY = false;   // 상하 반전
+    bool flipZ = true;    // RH→LH 전환
+    bool swapYZ = false;  // 필요 시 Z-up→Y-up 회전
+};
+
+static inline void ApplyAxisFix(XMFLOAT3& p, XMFLOAT3& n, AxisFix fix, bool& flipWinding)
+{
+    if (fix.swapYZ) {
+        float py = p.y, pz = p.z; p.y = pz;  p.z = -py;
+        float ny = n.y, nz = n.z; n.y = nz;  n.z = -ny;
+    }
+
+    if (fix.flipZ) { p.z = -p.z; n.z = -n.z; flipWinding = !flipWinding; }
+    if (fix.flipY) { p.y = -p.y; n.y = -n.y; flipWinding = !flipWinding; } // ← 추가
+    if (fix.flipX) { p.x = -p.x; n.x = -n.x; flipWinding = !flipWinding; }
+}
 
 CMesh::CMesh(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName, int FileType)
 {
@@ -534,12 +552,32 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                 tri[i].nrm = ToXM3(nw);
             }
 
+            // === 추가 시작: 축 보정 적용 ===
+            AxisFix fix;
+            fix.flipX = false;
+            fix.flipY = true;   // 상하 반전 교정
+            fix.flipZ = true;   // RH→LH (전후 방향은 그대로)
+            fix.swapYZ = false;
+
+            bool finalFlip = (xform.Determinant() < 0.0);
+            for (int ii = 0; ii < 3; ++ii)
+                ApplyAxisFix(tri[ii].pos, tri[ii].nrm, fix, finalFlip);
+
+            int order[3] = { 0,1,2 };
+            if (finalFlip) std::swap(order[1], order[2]);
+            // === 추가 끝 ===
+
+            // push
             outV.push_back(tri[0]);
             outV.push_back(tri[1]);
             outV.push_back(tri[2]);
-            outI.push_back(base + (UINT)outV.size() - 3);
-            outI.push_back(base + (UINT)outV.size() - 2);
-            outI.push_back(base + (UINT)outV.size() - 1);
+
+            UINT i0 = (UINT)outV.size() - 3;
+            UINT i1 = (UINT)outV.size() - 2;
+            UINT i2 = (UINT)outV.size() - 1;
+            outI.push_back(i0);
+            outI.push_back(i1);
+            outI.push_back(i2);
         }
     }
 
