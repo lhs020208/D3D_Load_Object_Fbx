@@ -184,10 +184,12 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandLis
 	memcpy(pMapped, &lightData, sizeof(LIGHT_CB));
 	m_pLightCB->Unmap(0, nullptr);
 
-	CMesh* pCubeMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/HumanCharacterDummy_F.fbx", 2);
+	CMesh* pCubeMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.fbx", 2);
+	//CMesh* pCubeMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/HumanCharacterDummy_F.fbx", 2);
+
 	m_pPlayer->SetMesh(0, pCubeMesh);
 	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
-	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, 100.0f, -150.0f));
+	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, 10.0f, -150.0f));
 
 	m_pPlayer -> CreateShaderVariables(pd3dDevice, pd3dCommandList);
 	m_pPlayer -> SetShader(pShader);
