@@ -702,3 +702,59 @@ BOOL CMesh::RayIntersectionByTriangle(XMVECTOR& xmRayOrigin, XMVECTOR& xmRayDire
 
 	return(bIntersected);
 }
+
+
+void CMesh::LoadAnimationFromFBX(const char* filename)
+{
+    // 1. FBX 초기화
+    FbxManager* mgr = FbxManager::Create();
+    FbxIOSettings* ios = FbxIOSettings::Create(mgr, IOSROOT);
+    mgr->SetIOSettings(ios);
+
+    FbxImporter* imp = FbxImporter::Create(mgr, "");
+    FbxScene* scene = FbxScene::Create(mgr, "scene");
+    if (!imp->Initialize(filename, -1, mgr->GetIOSettings())) return;
+    imp->Import(scene);
+    imp->Destroy();
+
+    // 2. 좌표계/단위 정규화 (LoadMesh와 동일)
+    FbxAxisSystem::DirectX.ConvertScene(scene);
+    FbxSystemUnit::m.ConvertScene(scene);
+
+    // 3. 첫 애니메이션 스택 추출
+    FbxAnimStack* stack = scene->GetSrcObject<FbxAnimStack>(0);
+    FbxAnimLayer* layer = stack->GetMember<FbxAnimLayer>(0);
+    scene->SetCurrentAnimationStack(stack);
+
+    // 4. 모든 본 노드 순회
+    for (auto& bone : m_Bones)
+    {
+        FbxNode* boneNode = scene->FindNodeByName(bone.name.c_str());
+        if (!boneNode) continue;
+
+        FbxAnimCurve* tx = boneNode->LclTranslation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_X);
+        FbxAnimCurve* ty = boneNode->LclTranslation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Y);
+        FbxAnimCurve* tz = boneNode->LclTranslation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Z);
+
+        FbxAnimCurve* rx = boneNode->LclRotation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_X);
+        FbxAnimCurve* ry = boneNode->LclRotation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Y);
+        FbxAnimCurve* rz = boneNode->LclRotation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Z);
+
+        int keyCount = tx ? tx->KeyGetCount() : 0;
+        for (int i = 0; i < keyCount; ++i)
+        {
+            FbxTime time = tx->KeyGetTime(i);
+            FbxAMatrix m = boneNode->EvaluateGlobalTransform(time);
+
+            Keyframe k;
+            k.time = time.GetSecondDouble();
+            for (int r = 0; r < 4; ++r)
+                for (int c = 0; c < 4; ++c)
+                    k.transform.m[r][c] = (float)m.Get(r, c);
+
+            bone.keyframes.push_back(k);
+        }
+    }
+
+    mgr->Destroy();
+}

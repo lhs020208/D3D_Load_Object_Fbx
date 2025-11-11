@@ -3,6 +3,8 @@
 //-----------------------------------------------------------------------------
 
 #pragma once
+#include "stdafx.h"
+#include "Animator.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -43,6 +45,8 @@ struct Bone
 	std::string name;            // 본 이름
 	int parentIndex;             // 부모 본 인덱스
 	XMFLOAT4X4 offsetMatrix;     // Inverse Bind Pose (모델 공간 → 본 공간)
+
+	std::vector<Keyframe> keyframes;
 };
 
 struct SkinnedVertex
@@ -52,6 +56,10 @@ struct SkinnedVertex
 	XMFLOAT2 uv;
 	UINT boneIndices[4];     // 어떤 본들이 영향을 주는가
 	float boneWeights[4];    // 각 본의 영향 비율
+};
+struct AnimationClip {
+	std::unordered_map<int, BoneAnimation> boneAnims;
+	double duration;
 };
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 class CAnimator;
@@ -135,4 +143,6 @@ public:
 	void LoadMeshFromOBJ(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName);
 	void LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const char* filename);
 	void EnableSkinning(int nBones);
+
+	void LoadAnimationFromFBX(const char* filename);
 };
