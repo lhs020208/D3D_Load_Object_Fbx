@@ -50,6 +50,7 @@ struct VS_INPUT_SKINNED
 {
     float3 position : POSITION;
     float3 normal : NORMAL;
+    float2 uv : TEXTURECOORD;
     uint4 bi : BLENDINDICES;
     float4 bw : BLENDWEIGHT;
 };
@@ -90,17 +91,13 @@ VS_OUTPUT VSLighting(VS_INPUT input)
 VS_OUTPUT VSLightingSkinned(VS_INPUT_SKINNED input)
 {
     VS_OUTPUT o;
-
     float4x4 skinM = 0;
     [unroll]
     for (int i = 0; i < 4; ++i)
     {
-        float w = input.bw[i];
+        const float w = input.bw[i];
         if (w > 0)
-        {
-            uint idx = input.bi[i];
-            skinM += gBoneTransforms[idx] * w;
-        }
+            skinM += gBoneTransforms[input.bi[i]] * w;
     }
 
     float4 posSkinned = mul(float4(input.position, 1.0f), skinM);
@@ -113,9 +110,10 @@ VS_OUTPUT VSLightingSkinned(VS_INPUT_SKINNED input)
     o.positionW = posW.xyz;
     o.normalW = normalize(nW);
     o.normal = input.normal;
-    o.uv = float2(0.0f, 0.0f);
+    o.uv = input.uv; // ← 0,0 고정 대신 입력 사용
     return o;
 }
+
 
 static float3 gf3AmbientLightColor = float3(1.0f, 1.0f, 1.0f);
 static float3 gf3SpecularColor = float3(0.2f, 0.2f, 0.2f);
