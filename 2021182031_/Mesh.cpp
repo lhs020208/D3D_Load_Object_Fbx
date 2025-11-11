@@ -108,25 +108,40 @@ void CMesh::ReleaseUploadBuffers()
 	m_pd3dBoneWeightUploadBuffer = NULL;
 };
 
-void CMesh::Render(ID3D12GraphicsCommandList *pd3dCommandList)
+void CMesh::Render(ID3D12GraphicsCommandList* cmdList)
 {
+    // 1) 애니메이터 갱신
+    if (m_bSkinnedMesh && m_pAnimator)
+    {
+        // deltaTime은 엔진의 타이머에서 가져오거나 고정값(예: 1/60)
+        m_pAnimator->Update(1.0 / 60.0, m_Bones, m_pxmf4x4BoneTransforms);
 
-	pd3dCommandList->IASetPrimitiveTopology(m_d3dPrimitiveTopology);
-	pd3dCommandList->IASetVertexBuffers(m_nSlot, m_nVertexBufferViews, m_pd3dVertexBufferViews);
-	if (m_bSkinnedMesh && m_pd3dcbBoneTransforms)
-	{
-		pd3dCommandList->SetGraphicsRootConstantBufferView(4, m_pd3dcbBoneTransforms->GetGPUVirtualAddress());
-	}
-	if (m_pd3dIndexBuffer)
-	{
-		pd3dCommandList->IASetIndexBuffer(&m_d3dIndexBufferView);
-		pd3dCommandList->DrawIndexedInstanced(m_nIndices, 1, 0, 0, 0);
-	}
-	else
-	{
-		pd3dCommandList->DrawInstanced(m_nVertices, 1, m_nOffset, 0);
-	}
+        // 2) 본행렬을 GPU 상수버퍼로 복사
+        D3D12_RANGE readRange{ 0, 0 };
+        XMFLOAT4X4* mapped = nullptr;
+        m_pd3dcbBoneTransforms->Map(0, &readRange, reinterpret_cast<void**>(&mapped));
+        memcpy(mapped, m_pxmf4x4BoneTransforms, sizeof(XMFLOAT4X4) * m_Bones.size());
+        m_pd3dcbBoneTransforms->Unmap(0, nullptr);
+
+        // 3) 루트시그니처 슬롯 b4에 설정
+        cmdList->SetGraphicsRootConstantBufferView(4, m_pd3dcbBoneTransforms->GetGPUVirtualAddress());
+    }
+
+    // 4) 기존 메시 드로우 코드 유지
+    cmdList->IASetPrimitiveTopology(m_d3dPrimitiveTopology);
+    cmdList->IASetVertexBuffers(m_nSlot, m_nVertexBufferViews, m_pd3dVertexBufferViews);
+
+    if (m_pd3dIndexBuffer)
+    {
+        cmdList->IASetIndexBuffer(&m_d3dIndexBufferView);
+        cmdList->DrawIndexedInstanced(m_nIndices, 1, 0, 0, 0);
+    }
+    else
+    {
+        cmdList->DrawInstanced(m_nVertices, 1, 0, 0);
+    }
 }
+
 
 void CMesh::LoadMeshFromOBJ(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, char* filename)
 {

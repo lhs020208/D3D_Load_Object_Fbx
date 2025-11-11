@@ -28,5 +28,4 @@ public:
 
     void Update(double dt);
     void Update(double dt, const std::vector<Bone>& bones, XMFLOAT4X4* outBoneTransforms);
-    void Update(double dt, std::vector<Bone>& bones, XMFLOAT4X4* outBoneTransforms);
 };
