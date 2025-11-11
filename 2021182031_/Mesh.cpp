@@ -663,6 +663,19 @@ void CMesh::EnableSkinning(int nBones)
 		XMStoreFloat4x4(&m_pxmf4x4BoneTransforms[i], XMMatrixIdentity());
 }
 
+void CMesh::EnableSkinning(ID3D12Device* device, int nBones)
+{
+    m_bSkinnedMesh = true;
+    m_pxmf4x4BoneTransforms = new XMFLOAT4X4[nBones];
+    for (int i = 0; i < nBones; ++i)
+        XMStoreFloat4x4(&m_pxmf4x4BoneTransforms[i], XMMatrixIdentity());
+
+    UINT cbSize = sizeof(XMFLOAT4X4) * nBones;
+    m_pd3dcbBoneTransforms = CreateBufferResource(
+        device, nullptr, m_pxmf4x4BoneTransforms, cbSize,
+        D3D12_HEAP_TYPE_DEFAULT,
+        D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, nullptr);
+}
 
 void CMesh::SetPolygon(int nIndex, CPolygon* pPolygon)
 {

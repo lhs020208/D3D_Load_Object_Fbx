@@ -32,6 +32,7 @@
 #include <vector>
 #include <functional>
 #include <unordered_map>
+#include <algorithm>
 using namespace std;
 
 #include <d3d12.h>

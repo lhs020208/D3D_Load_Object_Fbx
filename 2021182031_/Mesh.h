@@ -39,14 +39,13 @@ public:
 	CDiffusedVertex() : m_xmf4Diffuse(0, 0, 0, 0), m_xmf3Normal(0, 1, 0) {}
 	CDiffusedVertex(XMFLOAT3 pos, XMFLOAT4 dif, XMFLOAT3 normal) : CVertex(pos), m_xmf4Diffuse(dif), m_xmf3Normal(normal) {}
 };
-
 struct Bone
 {
-	std::string name;            // 본 이름
-	int parentIndex;             // 부모 본 인덱스
-	XMFLOAT4X4 offsetMatrix;     // Inverse Bind Pose (모델 공간 → 본 공간)
+	std::string name;
+	int         parentIndex;
+	XMFLOAT4X4  offsetMatrix;
 
-	std::vector<Keyframe> keyframes;
+	std::vector<Keyframe> keyframes;  // Animator.h에서 선언된 Keyframe 사용
 };
 
 struct SkinnedVertex
@@ -57,10 +56,7 @@ struct SkinnedVertex
 	UINT boneIndices[4];     // 어떤 본들이 영향을 주는가
 	float boneWeights[4];    // 각 본의 영향 비율
 };
-struct AnimationClip {
-	std::unordered_map<int, BoneAnimation> boneAnims;
-	double duration;
-};
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 class CAnimator;
 class CMesh
@@ -143,6 +139,7 @@ public:
 	void LoadMeshFromOBJ(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName);
 	void LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const char* filename);
 	void EnableSkinning(int nBones);
+	void EnableSkinning(ID3D12Device* device, int nBones);
 
 	void LoadAnimationFromFBX(const char* filename);
 };
