@@ -308,6 +308,21 @@ void CPersonPlayer::OnPrepareRender()
 
 void CPersonPlayer::Animate(float fElapsedTime)
 {
+	if (m_ppMeshes && m_ppMeshes[0] && m_ppMeshes[0]->m_pAnimator)
+	{
+		CMesh* pMesh = m_ppMeshes[0];
+		pMesh->m_pAnimator->Update(fElapsedTime, pMesh->m_Bones, pMesh->m_pxmf4x4BoneTransforms);
+
+		// GPU·Î Bone Transform º¹»ç
+		void* pMapped = nullptr;
+		if (pMesh->m_pd3dcbBoneTransforms)
+		{
+			pMesh->m_pd3dcbBoneTransforms->Map(0, nullptr, &pMapped);
+			memcpy(pMapped, pMesh->m_pxmf4x4BoneTransforms, sizeof(XMFLOAT4X4) * pMesh->m_Bones.size());
+			pMesh->m_pd3dcbBoneTransforms->Unmap(0, nullptr);
+		}
+	}
+
 	XMFLOAT3 look = GetLook();
 	XMFLOAT3 right = GetRight();
 	XMFLOAT3 moveVec = { 0.0f, 0.0f, 0.0f };

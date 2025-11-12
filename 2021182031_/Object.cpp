@@ -104,12 +104,12 @@ void CGameObject::Render(ID3D12GraphicsCommandList *pd3dCommandList, CCamera *pC
 
 	UpdateShaderVariables(pd3dCommandList);
 	if (m_pShader) m_pShader->Render(pd3dCommandList, pCamera);
-	if (m_ppMeshes)
+	if (m_ppMeshes && m_ppMeshes[0])
 	{
-		for (int i = 0; i < m_nMeshes; i++)
-		{
-			if (m_ppMeshes[i]) m_ppMeshes[i]->Render(pd3dCommandList);
-		}
+		CMesh* pMesh = m_ppMeshes[0];
+		if (pMesh->m_pd3dcbBoneTransforms)
+			pd3dCommandList->SetGraphicsRootConstantBufferView(4, pMesh->m_pd3dcbBoneTransforms->GetGPUVirtualAddress());
+		pMesh->Render(pd3dCommandList);
 	}
 }
 

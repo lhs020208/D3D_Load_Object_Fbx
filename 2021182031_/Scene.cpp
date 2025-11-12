@@ -186,9 +186,9 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandLis
 
 	CMesh* pCubeMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.fbx", 2);
 	//CMesh* pCubeMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/HumanCharacterDummy_F.fbx", 2);
-	pCubeMesh->EnableSkinning(pd3dDevice, pCubeMesh->m_Bones.size());
-	pCubeMesh->LoadAnimationFromFBX("Models/unitychan_JUMP00.fbx");
-	pCubeMesh->m_pAnimator = new CAnimator();
+	//pCubeMesh->EnableSkinning(pd3dDevice, pCubeMesh->m_Bones.size());
+	//pCubeMesh->LoadAnimationFromFBX("Models/unitychan_JUMP00.fbx");
+	//pCubeMesh->m_pAnimator = new CAnimator();
 
 
 	m_pPlayer->SetMesh(0, pCubeMesh);
