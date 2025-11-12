@@ -502,12 +502,13 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
         }
     }
 
-    // 5) 모든 메시를 하나의 정적 버퍼로 병합 (pos+normal)
-    struct Vtx { XMFLOAT3 pos; XMFLOAT3 nrm; };
-    std::vector<Vtx> outV;
+    // 5) 모든 메시를 하나의 정적 버퍼로 병합 (pos+normal+uv)
+    struct VtxUV { XMFLOAT3 pos; XMFLOAT3 nrm; XMFLOAT2 uv; };
+    std::vector<VtxUV> outV;
     std::vector<UINT> outI;
 
     auto ToXM3 = [](const FbxVector4& v) { return XMFLOAT3((float)v[0], (float)v[1], (float)v[2]); };
+    auto ToXM2 = [](const FbxVector2& v) { return XMFLOAT2((float)v[0], (float)v[1]); };
 
     for (auto* mesh : meshes)
     {
@@ -529,56 +530,43 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
         bool flip = (xform.Determinant() < 0.0);
         UINT base = (UINT)outV.size();
 
+        // 0번 UVSet 이름 가져오기
+        FbxStringList uvSets;
+        mesh->GetUVSetNames(uvSets);
+        const char* uvSetName = (uvSets.GetCount() > 0) ? uvSets.GetStringAt(0) : nullptr;
+
         int polyCount = mesh->GetPolygonCount();
         for (int p = 0; p < polyCount; ++p)
         {
             int ord[3] = { 0,1,2 };
             if (flip) std::swap(ord[1], ord[2]);
 
-            Vtx tri[3];
             for (int i = 0; i < 3; ++i)
             {
                 int v = ord[i];
                 int cpIdx = mesh->GetPolygonVertex(p, v);
                 FbxVector4 cp = mesh->GetControlPointAt(cpIdx);
 
+                // 위치/법선 변환
                 FbxVector4 pw = xform.MultT(cp); // w=1
                 FbxVector4 n; mesh->GetPolygonVertexNormal(p, v, n);
                 FbxVector4 nw = xform.MultT(FbxVector4(n[0], n[1], n[2], 0.0)); // w=0
                 double L = sqrt(nw[0] * nw[0] + nw[1] * nw[1] + nw[2] * nw[2]);
                 if (L > 1e-12) { nw[0] /= L; nw[1] /= L; nw[2] /= L; }
 
-                tri[i].pos = ToXM3(pw);
-                tri[i].nrm = ToXM3(nw);
+                // UV 좌표 읽기
+                XMFLOAT2 uv{ 0.0f, 0.0f };
+                if (uvSetName)
+                {
+                    FbxVector2 uvv;
+                    bool unmapped = false;
+                    if (mesh->GetPolygonVertexUV(p, v, uvSetName, uvv, unmapped))
+                        uv = ToXM2(uvv);
+                }
+
+                outV.push_back({ ToXM3(pw), ToXM3(nw), uv });
+                outI.push_back((UINT)outV.size() - 1);
             }
-            /*
-            //애니메이션 사용 시 이거 하면 좆됨
-            // === 축 보정 적용 ===
-            AxisFix fix;
-            fix.flipX = false;
-            fix.flipY = true;   // 상하 반전 교정
-            fix.flipZ = true;   // RH→LH (전후 방향은 그대로)
-            fix.swapYZ = false;
-
-            bool finalFlip = (xform.Determinant() < 0.0);
-            for (int ii = 0; ii < 3; ++ii)
-                ApplyAxisFix(tri[ii].pos, tri[ii].nrm, fix, finalFlip);
-
-            int order[3] = { 0,1,2 };
-            if (finalFlip) std::swap(order[1], order[2]);
-            */
-
-            // push
-            outV.push_back(tri[0]);
-            outV.push_back(tri[1]);
-            outV.push_back(tri[2]);
-
-            UINT i0 = (UINT)outV.size() - 3;
-            UINT i1 = (UINT)outV.size() - 2;
-            UINT i2 = (UINT)outV.size() - 1;
-            outI.push_back(i0);
-            outI.push_back(i1);
-            outI.push_back(i2);
         }
     }
 
@@ -588,33 +576,41 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
 
     if (m_pxmf3Positions) delete[] m_pxmf3Positions;
     if (m_pxmf3Normals)   delete[] m_pxmf3Normals;
+    if (m_pxmf2TextureCoords) delete[] m_pxmf2TextureCoords;
     if (m_pnIndices)      delete[] m_pnIndices;
 
-    m_pxmf3Positions = (m_nVertices ? new XMFLOAT3[m_nVertices] : nullptr);
-    m_pxmf3Normals = (m_nVertices ? new XMFLOAT3[m_nVertices] : nullptr);
-    m_pnIndices = (m_nIndices ? new UINT[m_nIndices] : nullptr);
+    m_pxmf3Positions = new XMFLOAT3[m_nVertices];
+    m_pxmf3Normals = new XMFLOAT3[m_nVertices];
+    m_pxmf2TextureCoords = new XMFLOAT2[m_nVertices];
+    m_pnIndices = new UINT[m_nIndices];
 
-    for (UINT i = 0; i < m_nVertices; ++i) { m_pxmf3Positions[i] = outV[i].pos; m_pxmf3Normals[i] = outV[i].nrm; }
-    if (m_nIndices) memcpy(m_pnIndices, outI.data(), sizeof(UINT) * m_nIndices);
-
-    struct VB { XMFLOAT3 pos; XMFLOAT3 nrm; };
-    if (m_pd3dVertexBufferViews) { delete[] m_pd3dVertexBufferViews; m_pd3dVertexBufferViews = nullptr; }
-
-    if (m_nVertices) {
-        std::unique_ptr<VB[]> vb(new VB[m_nVertices]);
-        for (UINT i = 0; i < m_nVertices; ++i) { vb[i].pos = m_pxmf3Positions[i]; vb[i].nrm = m_pxmf3Normals[i]; }
-        UINT vbSize = sizeof(VB) * m_nVertices;
-
-        m_pd3dPositionBuffer = CreateBufferResource(
-            device, cmdList, vb.get(), vbSize,
-            D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, &m_pd3dPositionUploadBuffer);
-
-        m_nVertexBufferViews = 1;
-        m_pd3dVertexBufferViews = new D3D12_VERTEX_BUFFER_VIEW[1];
-        m_pd3dVertexBufferViews[0].BufferLocation = m_pd3dPositionBuffer->GetGPUVirtualAddress();
-        m_pd3dVertexBufferViews[0].StrideInBytes = sizeof(VB);
-        m_pd3dVertexBufferViews[0].SizeInBytes = vbSize;
+    for (UINT i = 0; i < m_nVertices; ++i) {
+        m_pxmf3Positions[i] = outV[i].pos;
+        m_pxmf3Normals[i] = outV[i].nrm;
+        m_pxmf2TextureCoords[i] = outV[i].uv;
     }
+    memcpy(m_pnIndices, outI.data(), sizeof(UINT) * m_nIndices);
+
+    // VB 생성
+    struct VB { XMFLOAT3 pos; XMFLOAT3 nrm; XMFLOAT2 uv; };
+    std::unique_ptr<VB[]> vb(new VB[m_nVertices]);
+    for (UINT i = 0; i < m_nVertices; ++i) {
+        vb[i].pos = m_pxmf3Positions[i];
+        vb[i].nrm = m_pxmf3Normals[i];
+        vb[i].uv = m_pxmf2TextureCoords[i];
+    }
+
+    UINT vbSize = sizeof(VB) * m_nVertices;
+    m_pd3dPositionBuffer = CreateBufferResource(
+        device, cmdList, vb.get(), vbSize,
+        D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+        &m_pd3dPositionUploadBuffer);
+
+    m_nVertexBufferViews = 1;
+    m_pd3dVertexBufferViews = new D3D12_VERTEX_BUFFER_VIEW[1];
+    m_pd3dVertexBufferViews[0].BufferLocation = m_pd3dPositionBuffer->GetGPUVirtualAddress();
+    m_pd3dVertexBufferViews[0].StrideInBytes = sizeof(VB);
+    m_pd3dVertexBufferViews[0].SizeInBytes = vbSize;
 
     if (m_nIndices) {
         UINT ibSize = sizeof(UINT) * m_nIndices;
@@ -649,8 +645,10 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
         << "   MeshParts: " << meshes.size() << "\n"
         << "   Vertices : " << m_nVertices << "\n"
         << "   Indices  : " << m_nIndices << "\n"
-        << "   Bones    : " << m_Bones.size() << "\n";
+        << "   Bones    : " << m_Bones.size() << "\n"
+        << "   UVs      : " << (m_pxmf2TextureCoords ? "Yes" : "No") << "\n";
     OutputDebugStringA(log.str().c_str());
+
 
     mgr->Destroy();
 }
