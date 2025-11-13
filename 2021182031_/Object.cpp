@@ -121,7 +121,7 @@ void CGameObject::Render(ID3D12GraphicsCommandList *pd3dCommandList, CCamera *pC
 				continue;
 			}
 			pd3dCommandList->SetGraphicsRootDescriptorTable(
-				4,
+				5,
 				CD3DX12_GPU_DESCRIPTOR_HANDLE(
 					m_pd3dSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
 					m_ppMeshes[i]->m_nTextureDescriptorIndex,

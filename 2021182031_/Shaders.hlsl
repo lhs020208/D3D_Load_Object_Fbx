@@ -36,6 +36,9 @@ cbuffer cbBones : register(b4)
     float4x4 gBoneTransforms[MAX_BONES];
 };
 
+Texture2D gTexture : register(t0);
+SamplerState gSampler : register(s0);
+
 struct VS_INPUT
 {
 	float3		position : POSITION;
@@ -184,6 +187,10 @@ float4 PSLighting(VS_OUTPUT input) : SV_TARGET
     // 합산
     float3 finalColor = ambient + diffuse + specular;
 	
-    return float4(finalColor, 1.0f);
+     // 텍스처 샘플링 추가
+    float4 texColor = gTexture.Sample(gSampler, input.uv);
+
+    // 텍스처와 조명 결과 합산
+    return float4(finalColor, 1.0f) * texColor;
 
 }

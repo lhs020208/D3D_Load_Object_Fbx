@@ -22,57 +22,117 @@ void CScene::BuildObjects(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *p
 	
 }
 
-ID3D12RootSignature *CScene::CreateGraphicsRootSignature(ID3D12Device *pd3dDevice)
+ID3D12RootSignature* CScene::CreateGraphicsRootSignature(ID3D12Device* pd3dDevice)
 {
-	ID3D12RootSignature *pd3dGraphicsRootSignature = NULL;
+	ID3D12RootSignature* pd3dGraphicsRootSignature = NULL;
 
-	D3D12_ROOT_PARAMETER pd3dRootParameters[5];
+	// 총 root parameter 개수 = 기존 5개 + Texture용 1개 = 6개
+	D3D12_ROOT_PARAMETER pd3dRootParameters[6];
+
+	// -------------------------------------------------------------
+	// [0] 프레임워크 정보 (Time, Cursor 등)
+	// -------------------------------------------------------------
 	pd3dRootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-	pd3dRootParameters[0].Constants.Num32BitValues = 4; //Time, ElapsedTime, xCursor, yCursor
-	pd3dRootParameters[0].Constants.ShaderRegister = 0; //Time
+	pd3dRootParameters[0].Constants.Num32BitValues = 4;
+	pd3dRootParameters[0].Constants.ShaderRegister = 0;
 	pd3dRootParameters[0].Constants.RegisterSpace = 0;
 	pd3dRootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
+	// -------------------------------------------------------------
+	// [1] GameObject World + Color
+	// -------------------------------------------------------------
 	pd3dRootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-	pd3dRootParameters[1].Constants.Num32BitValues = 19; //16 + 3
-	pd3dRootParameters[1].Constants.ShaderRegister = 1; //World
+	pd3dRootParameters[1].Constants.Num32BitValues = 19;
+	pd3dRootParameters[1].Constants.ShaderRegister = 1;
 	pd3dRootParameters[1].Constants.RegisterSpace = 0;
 	pd3dRootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
+	// -------------------------------------------------------------
+	// [2] Camera matrices
+	// -------------------------------------------------------------
 	pd3dRootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-	pd3dRootParameters[2].Constants.Num32BitValues = 35; //16 + 16 + 3
-	pd3dRootParameters[2].Constants.ShaderRegister = 2; //Camera
+	pd3dRootParameters[2].Constants.Num32BitValues = 35;
+	pd3dRootParameters[2].Constants.ShaderRegister = 2;
 	pd3dRootParameters[2].Constants.RegisterSpace = 0;
 	pd3dRootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
+	// -------------------------------------------------------------
+	// [3] Light CBV (b3)
+	// -------------------------------------------------------------
 	pd3dRootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-	pd3dRootParameters[3].Descriptor.ShaderRegister = 3;  // register(b3)
+	pd3dRootParameters[3].Descriptor.ShaderRegister = 3;
 	pd3dRootParameters[3].Descriptor.RegisterSpace = 0;
 	pd3dRootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
+	// -------------------------------------------------------------
+	// [4] Bone Transform CBV (b4)
+	// -------------------------------------------------------------
 	pd3dRootParameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	pd3dRootParameters[4].Descriptor.ShaderRegister = 4;
 	pd3dRootParameters[4].Descriptor.RegisterSpace = 0;
 	pd3dRootParameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-	D3D12_ROOT_SIGNATURE_FLAGS d3dRootSignatureFlags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-	D3D12_ROOT_SIGNATURE_DESC d3dRootSignatureDesc;
-	::ZeroMemory(&d3dRootSignatureDesc, sizeof(D3D12_ROOT_SIGNATURE_DESC));
-	d3dRootSignatureDesc.NumParameters = 5;
-	d3dRootSignatureDesc.pParameters = pd3dRootParameters;
-	d3dRootSignatureDesc.NumStaticSamplers = 0;
-	d3dRootSignatureDesc.pStaticSamplers = NULL;
-	d3dRootSignatureDesc.Flags = d3dRootSignatureFlags;
+	// -------------------------------------------------------------
+	// [5] Texture DescriptorTable (t0)
+	// -------------------------------------------------------------
+	CD3DX12_DESCRIPTOR_RANGE texRange;
+	texRange.Init(
+		D3D12_DESCRIPTOR_RANGE_TYPE_SRV, // SRV
+		1,                               // 1개
+		0,                               // baseShaderRegister = t0
+		0,                               // register space
+		0                                // offset
+	);
 
-	ID3DBlob *pd3dSignatureBlob = NULL;
-	ID3DBlob *pd3dErrorBlob = NULL;
-	D3D12SerializeRootSignature(&d3dRootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &pd3dSignatureBlob, &pd3dErrorBlob);
-	pd3dDevice->CreateRootSignature(0, pd3dSignatureBlob->GetBufferPointer(), pd3dSignatureBlob->GetBufferSize(), __uuidof(ID3D12RootSignature), (void **)&pd3dGraphicsRootSignature);
-	if (pd3dSignatureBlob) pd3dSignatureBlob->Release();
-	if (pd3dErrorBlob) pd3dErrorBlob->Release();
+	pd3dRootParameters[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	pd3dRootParameters[5].DescriptorTable.NumDescriptorRanges = 1;
+	pd3dRootParameters[5].DescriptorTable.pDescriptorRanges = &texRange;
+	pd3dRootParameters[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
-	return(pd3dGraphicsRootSignature);
+	// -------------------------------------------------------------
+	// Static Sampler (s0)
+	// -------------------------------------------------------------
+	CD3DX12_STATIC_SAMPLER_DESC samplerDesc(
+		0,                                 // register s0
+		D3D12_FILTER_MIN_MAG_MIP_LINEAR,   // Linear filter
+		D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+		D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+		D3D12_TEXTURE_ADDRESS_MODE_WRAP
+	);
+
+	// -------------------------------------------------------------
+	// Root Signature
+	// -------------------------------------------------------------
+	D3D12_ROOT_SIGNATURE_DESC rootSigDesc = {};
+	rootSigDesc.NumParameters = _countof(pd3dRootParameters);
+	rootSigDesc.pParameters = pd3dRootParameters;
+	rootSigDesc.NumStaticSamplers = 1;
+	rootSigDesc.pStaticSamplers = &samplerDesc;
+	rootSigDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+	ID3DBlob* sigBlob = nullptr;
+	ID3DBlob* errBlob = nullptr;
+
+	D3D12SerializeRootSignature(
+		&rootSigDesc,
+		D3D_ROOT_SIGNATURE_VERSION_1,
+		&sigBlob,
+		&errBlob
+	);
+
+	pd3dDevice->CreateRootSignature(
+		0,
+		sigBlob->GetBufferPointer(),
+		sigBlob->GetBufferSize(),
+		IID_PPV_ARGS(&pd3dGraphicsRootSignature)
+	);
+
+	if (sigBlob) sigBlob->Release();
+	if (errBlob) errBlob->Release();
+
+	return pd3dGraphicsRootSignature;
 }
+
 
 void CScene::ReleaseObjects()
 {
