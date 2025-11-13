@@ -153,6 +153,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Camera.h" />
+    <ClInclude Include="d3dx12.h" />
     <ClInclude Include="GameFramework.h" />
     <ClInclude Include="LabProject.h" />
     <ClInclude Include="Mesh.h" />

@@ -45,7 +45,10 @@ using namespace std;
 #include <D3d12SDKLayers.h>
 #include <filesystem>
 #include <fbxsdk.h>
+#include <wincodec.h>      // WIC API
+#pragma comment(lib, "windowscodecs.lib")
 
+#include "d3dx12.h"
 
 using namespace DirectX;
 using namespace DirectX::PackedVector;
