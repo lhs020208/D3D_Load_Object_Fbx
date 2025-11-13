@@ -89,17 +89,17 @@ packages/
 # =========================
 # 프로젝트 관련
 # =========================
-*.fbx
+# *.fbx
 *.obj
-*.png
+# *.png
 *.jpg
-*.tga
+# *.tga
 *.dds
 *.bmp
 *.wav
 *.mp3
 *.mp4
-*.zip
+# *.zip
 *.7z
 *.rar
 *.iso
