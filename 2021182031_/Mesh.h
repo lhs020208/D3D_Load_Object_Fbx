@@ -53,6 +53,28 @@ struct SkinnedVertex
 	UINT boneIndices[4];     // 어떤 본들이 영향을 주는가
 	float boneWeights[4];    // 각 본의 영향 비율
 };
+
+struct SubMesh
+{
+	vector<XMFLOAT3> positions;
+	vector<XMFLOAT3> normals;
+	vector<XMFLOAT2> uvs;
+	vector<XMUINT4>  boneIndices;
+	vector<XMFLOAT4> boneWeights;
+	vector<UINT>     indices;
+
+	UINT textureIndex = UINT_MAX;       // 이 SubMesh가 사용할 텍스처의 SRV 인덱스
+
+	// GPU 리소스
+	ID3D12Resource* vb = nullptr;
+	ID3D12Resource* vbUpload = nullptr;
+	ID3D12Resource* ib = nullptr;
+	ID3D12Resource* ibUpload = nullptr;
+
+	D3D12_VERTEX_BUFFER_VIEW vbView{};
+	D3D12_INDEX_BUFFER_VIEW  ibView{};
+};
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 class CAnimator;
 class CMesh
@@ -147,4 +169,6 @@ public:
 	void LoadTextureFromFile(ID3D12Device* device,ID3D12GraphicsCommandList* cmdList,
 		ID3D12DescriptorHeap* srvHeap,UINT descriptorIndex,const wchar_t* fileName);
 	void CreateSRV(ID3D12Device* device, ID3D12DescriptorHeap* srvHeap);
+	
+	vector<SubMesh> m_SubMeshes;
 };
