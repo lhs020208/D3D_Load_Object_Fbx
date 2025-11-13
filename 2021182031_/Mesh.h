@@ -59,7 +59,6 @@ class CMesh
 {
 public:
 	CMesh(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName = NULL, int FileType = 1);
-	CMesh(int nPolygons);
 	virtual ~CMesh();
 
 private:
@@ -129,6 +128,15 @@ protected:
 
 	CAnimator*						m_pAnimator = nullptr;   // 애니메이션 관리자
 	bool							m_bSkinnedMesh = false;        // 스키닝 메시 여부
+
+	// ----------------------
+	// Texture (SRV) 관련 멤버
+	// ----------------------
+	ID3D12Resource* m_pd3dTexture = nullptr;
+	ID3D12Resource* m_pd3dTextureUploadBuffer = nullptr;
+	// 이 Mesh의 텍스처가 DescriptorHeap(SRV Heap)에서 점유하는 슬롯 번호
+	UINT                m_nTextureDescriptorIndex = UINT_MAX;
+
 public:
 	virtual void Render(ID3D12GraphicsCommandList *pd3dCommandList);
 

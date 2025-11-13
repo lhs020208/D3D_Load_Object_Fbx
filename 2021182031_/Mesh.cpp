@@ -50,46 +50,56 @@ CMesh::CMesh(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandLis
 		if (FileType == 1) LoadMeshFromOBJ(pd3dDevice, pd3dCommandList, pstrFileName);
 		if (FileType == 2) LoadMeshFromFBX(pd3dDevice, pd3dCommandList, pstrFileName);
 	}
-}
-CMesh::CMesh(int nPolygons)
-{
-	m_nPolygons = nPolygons;
-	m_ppPolygons = new CPolygon * [nPolygons];
+    m_pd3dTexture = nullptr;
+    m_pd3dTextureUploadBuffer = nullptr;
+    m_nTextureDescriptorIndex = UINT_MAX;
 }
 
 CMesh::~CMesh()
 {
-	if (m_pxmf3Positions) delete[] m_pxmf3Positions;
-	if (m_pxmf3Normals) delete[] m_pxmf3Normals;
-	if (m_pxmf2TextureCoords) delete[] m_pxmf2TextureCoords;
+    // ---- Texture Release ----
+    if (m_pd3dTexture) {
+        m_pd3dTexture->Release();
+        m_pd3dTexture = nullptr;
+    }
+    if (m_pd3dTextureUploadBuffer) {
+        m_pd3dTextureUploadBuffer->Release();
+        m_pd3dTextureUploadBuffer = nullptr;
+    }
 
-	if (m_pnIndices) delete[] m_pnIndices;
+    // 만약 DescriptorIndex는 Heap에서 자동 소멸되므로 따로 해제 없음
+    m_nTextureDescriptorIndex = UINT_MAX;
 
-	if (m_pd3dVertexBufferViews) delete[] m_pd3dVertexBufferViews;
+    // ---- 기존 Mesh 리소스 해제 ----
+    if (m_pxmf3Positions) delete[] m_pxmf3Positions;
+    if (m_pxmf3Normals)   delete[] m_pxmf3Normals;
+    if (m_pxmf2TextureCoords) delete[] m_pxmf2TextureCoords;
 
-	if (m_pd3dPositionBuffer) m_pd3dPositionBuffer->Release();
-	if (m_pd3dNormalBuffer) m_pd3dNormalBuffer->Release();
-	if (m_pd3dTextureCoordBuffer) m_pd3dTextureCoordBuffer->Release();
-	if (m_pd3dIndexBuffer) m_pd3dIndexBuffer->Release();
+    if (m_pnIndices) delete[] m_pnIndices;
 
-	if (m_pd3dBoneIndexBuffer) m_pd3dBoneIndexBuffer->Release();
-	if (m_pd3dBoneWeightBuffer) m_pd3dBoneWeightBuffer->Release();
-	if (m_pd3dcbBoneTransforms) m_pd3dcbBoneTransforms->Release();
+    if (m_pd3dVertexBufferViews) delete[] m_pd3dVertexBufferViews;
 
-	if (m_pxu4BoneIndices) delete[] m_pxu4BoneIndices;
-	if (m_pxmf4BoneWeights) delete[] m_pxmf4BoneWeights;
-	if (m_pxmf4x4BoneTransforms) delete[] m_pxmf4x4BoneTransforms;
+    if (m_pd3dPositionBuffer) m_pd3dPositionBuffer->Release();
+    if (m_pd3dNormalBuffer) m_pd3dNormalBuffer->Release();
+    if (m_pd3dTextureCoordBuffer) m_pd3dTextureCoordBuffer->Release();
+    if (m_pd3dIndexBuffer) m_pd3dIndexBuffer->Release();
 
-	if (m_ppPolygons)
-	{
-		for (int i = 0; i < m_nPolygons; ++i)
-		{
-			if (m_ppPolygons[i]) delete m_ppPolygons[i];
-		}
-		delete[] m_ppPolygons;
-		m_ppPolygons = nullptr;
-	}
+    if (m_pd3dBoneIndexBuffer) m_pd3dBoneIndexBuffer->Release();
+    if (m_pd3dBoneWeightBuffer) m_pd3dBoneWeightBuffer->Release();
+    if (m_pd3dcbBoneTransforms) m_pd3dcbBoneTransforms->Release();
+
+    if (m_pxu4BoneIndices) delete[] m_pxu4BoneIndices;
+    if (m_pxmf4BoneWeights) delete[] m_pxmf4BoneWeights;
+    if (m_pxmf4x4BoneTransforms) delete[] m_pxmf4x4BoneTransforms;
+
+    if (m_ppPolygons) {
+        for (int i = 0; i < m_nPolygons; ++i) {
+            if (m_ppPolygons[i]) delete m_ppPolygons[i];
+        }
+        delete[] m_ppPolygons;
+    }
 }
+
 
 void CMesh::ReleaseUploadBuffers() 
 {
