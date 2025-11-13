@@ -36,33 +36,34 @@ cbuffer cbBones : register(b4)
     float4x4 gBoneTransforms[MAX_BONES];
 };
 
-Texture2D gTexture : register(t0);
+Texture2D gDiffuseMap : register(t0);
 SamplerState gSampler : register(s0);
 
 struct VS_INPUT
 {
-	float3		position : POSITION;
-	float3		normal : NORMAL;
-	float2		uv : TEXTURECOORD;
+    float3 position : POSITION;
+    float3 normal   : NORMAL;
+    float2 uv       : TEXTURECOORD;
 };
+
 
 struct VS_INPUT_SKINNED
 {
     float3 position : POSITION;
     float3 normal : NORMAL;
+    float2 uv : TEXTURECOORD;
     uint4 bi : BLENDINDICES;
     float4 bw : BLENDWEIGHT;
 };
 
 struct VS_OUTPUT
 {
-	float4		positionH : SV_POSITION;
-	float3		positionW : POSITION;
-	float3		normal : NORMAL0;
-	float3		normalW : NORMAL1;
-	float2		uv : TEXTURECOORD;
+    float4 positionH : SV_POSITION;
+    float3 positionW : POSITION;
+    float3 normal : NORMAL0;
+    float3 normalW : NORMAL1;
+    float2 uv : TEXCOORD0;
 };
-
 float4 VSPseudoLighting(float4 position : POSITION) : SV_POSITION
 {
     return position;
@@ -70,26 +71,34 @@ float4 VSPseudoLighting(float4 position : POSITION) : SV_POSITION
 
 VS_OUTPUT VSLighting(VS_INPUT input)
 {
-	VS_OUTPUT output;
+    VS_OUTPUT output;
 
-	output.positionW = mul(float4(input.position, 1.0f), gmtxWorld).xyz;
-	output.positionH = mul(mul(float4(output.positionW, 1.0f), gmtxView), gmtxProjection);
-	output.normalW = mul(float4(input.normal, 0.0f), gmtxWorld).xyz;
-	output.normal = input.normal;
-	output.uv = input.uv;
+    float4 posW = mul(float4(input.position, 1.0f), gmtxWorld);
+    output.positionW = posW.xyz;
+    output.positionH = mul(mul(float4(output.positionW, 1.0f), gmtxView), gmtxProjection);
 
-	return(output);
+    output.normalW = mul(float4(input.normal, 0.0f), gmtxWorld).xyz;
+    output.normal = input.normal;
+
+    output.uv = input.uv;
+
+    return output;
 }
 
 VS_OUTPUT VSLightingSkinned(VS_INPUT_SKINNED input)
 {
-	
     VS_OUTPUT output;
-    output.positionW = mul(float4(input.position, 1.0f), gmtxWorld).xyz;
+    
+    float4 posW = mul(float4(input.position, 1.0f), gmtxWorld);
+    output.positionW = posW.xyz;
     output.positionH = mul(mul(float4(output.positionW, 1.0f), gmtxView), gmtxProjection);
+
     output.normalW = mul(float4(input.normal, 0.0f), gmtxWorld).xyz;
     output.normal = input.normal;
+    
     output.uv = float2(0.0f, 0.0f);
+    output.uv = input.uv;
+
     return output;
 }
 
@@ -156,41 +165,22 @@ float4 PSLighting(VS_OUTPUT input) : SV_TARGET
 {
     float3 gfLightDirection = float3(gfLightDirectionX, gfLightDirectionY, gfLightDirectionZ);
     float3 gf3LightColor = float3(gf3LightColorX, gf3LightColorY, gf3LightColorZ);
-	
-	// Normalize normal
+    
     float3 N = normalize(input.normalW);
-
-    // 조명 방향(단위벡터, -붙이면 '빛이 오는 방향')
     float3 L = normalize(-gfLightDirection);
-
-    // 카메라 방향
     float3 V = normalize(gf3CameraPosition - input.positionW);
-
-    // Half vector (Blinn-Phong)
     float3 H = normalize(L + V);
 
-    // 내적 계산
     float NdotL = saturate(dot(N, L));
-    float NdotV = saturate(dot(N, V));
     float NdotH = saturate(dot(N, H));
 
-    // 앰비언트 항
     float3 ambient = gf3AmbientLightColor * gf3ObjectColor;
-
-    // 디퓨즈 항
     float3 diffuse = gf3LightColor * gf3ObjectColor * NdotL;
+    float3 specular = gf3SpecularColor * pow(NdotH, 4.0f);
 
-    // 스페큘러 항
-    float shininess = 4.0f; // 하이라이트 강도 (임의 값, 조정 가능)
-    float3 specular = gf3SpecularColor * pow(NdotH, shininess);
-	
-    // 합산
-    float3 finalColor = ambient + diffuse + specular;
-	
-     // 텍스처 샘플링 추가
-    float4 texColor = gTexture.Sample(gSampler, input.uv);
-
-    // 텍스처와 조명 결과 합산
-    return float4(finalColor, 1.0f) * texColor;
-
+    float3 finalLight = ambient + diffuse + specular;
+    
+    float4 texColor = gDiffuseMap.Sample(gSampler, input.uv);
+    
+    return texColor * float4(finalLight, 1.0f);
 }
