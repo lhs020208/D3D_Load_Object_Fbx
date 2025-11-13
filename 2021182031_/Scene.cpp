@@ -273,7 +273,11 @@ void CTankScene::ReleaseUploadBuffers()
 void CTankScene::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera, ID3D12DescriptorHeap* m_pd3dSrvDescriptorHeap)
 {
 	pCamera->SetViewportsAndScissorRects(pd3dCommandList);
-	pCamera->UpdateShaderVariables(pd3dCommandList);
+	pCamera->UpdateShaderVariables(pd3dCommandList); 
+	
+	ID3D12DescriptorHeap* ppHeaps[] = { m_pd3dSrvDescriptorHeap };
+	pd3dCommandList->SetDescriptorHeaps(1, ppHeaps);
+
 	float light[6] = {
 		m_xmf3LightDirection.x,
 		m_xmf3LightDirection.y,
@@ -282,13 +286,8 @@ void CTankScene::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCa
 		m_xmf3LightColor.y,
 		m_xmf3LightColor.z,
 	};
-
-	// 렌더 시 바인딩
 	if (m_pLightCB)
 		pd3dCommandList->SetGraphicsRootConstantBufferView(3, m_pLightCB->GetGPUVirtualAddress());
-
-	ID3D12DescriptorHeap* ppHeaps[] = { m_pd3dSrvDescriptorHeap };
-	pd3dCommandList->SetDescriptorHeaps(1, ppHeaps);
 
 	if (m_pPlayer) m_pPlayer->Render(pd3dCommandList, pCamera);
 }
