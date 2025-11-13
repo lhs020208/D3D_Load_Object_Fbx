@@ -602,12 +602,23 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
     memcpy(m_pnIndices, outI.data(), sizeof(UINT) * m_nIndices);
 
     // VB 생성
-    struct VB { XMFLOAT3 pos; XMFLOAT3 nrm; XMFLOAT2 uv; };
+    struct VB
+    {
+        XMFLOAT3 pos;  // 12
+        XMFLOAT3 nrm;  // 12 → offset 12
+        XMFLOAT2 uv;   // 8  → offset 24
+
+        XMUINT4  bi;   // 16 → offset 32
+        XMFLOAT4 bw;   // 16 → offset 48
+    };
     std::unique_ptr<VB[]> vb(new VB[m_nVertices]);
     for (UINT i = 0; i < m_nVertices; ++i) {
         vb[i].pos = m_pxmf3Positions[i];
         vb[i].nrm = m_pxmf3Normals[i];
         vb[i].uv = m_pxmf2TextureCoords[i];
+        // 현재 스키닝 미사용 → 기본값
+        vb[i].bi = XMUINT4(0, 0, 0, 0);
+        vb[i].bw = XMFLOAT4(1, 0, 0, 0);
     }
 
     UINT vbSize = sizeof(VB) * m_nVertices;
