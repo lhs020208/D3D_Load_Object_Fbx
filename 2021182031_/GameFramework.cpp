@@ -46,12 +46,14 @@ bool CGameFramework::OnCreate(HINSTANCE hInstance, HWND hMainWnd)
 	m_hInstance = hInstance;
 	m_hWnd = hMainWnd;
 
+	CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 	CreateDirect3DDevice();
 	CreateCommandQueueAndList();
 	CreateRtvAndDsvDescriptorHeaps();
 	CreateSwapChain();
 	CreateDepthStencilView();
 
+	CreateSrvDescriptorHeap();
 	BuildObjects();
 
 	return(true);
@@ -318,6 +320,27 @@ void CGameFramework::ChangeSwapChainState()
 
 	CreateRenderTargetViews();
 }
+void CGameFramework::CreateSrvDescriptorHeap()
+{
+	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+	srvHeapDesc.NumDescriptors = 128; // 텍스처 최대 개수(원하면 조정 가능)
+	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	srvHeapDesc.NodeMask = 0;
+
+	HRESULT hr = m_pd3dDevice->CreateDescriptorHeap(
+		&srvHeapDesc,
+		IID_PPV_ARGS(&m_pd3dSrvDescriptorHeap));
+
+	if (FAILED(hr))
+		OutputDebugStringA("[Error] Failed to create SRV Descriptor Heap.\n");
+	else
+		OutputDebugStringA("[OK] SRV Descriptor Heap created.\n");
+
+	m_nSrvDescriptorIncrementSize =
+		m_pd3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+}
+
 
 void CGameFramework::OnProcessingMouseMessage(HWND hWnd, UINT nMessageID, WPARAM wParam, LPARAM lParam)
 {
@@ -436,7 +459,7 @@ void CGameFramework::BuildObjects()
 	m_pCamera = m_pPlayer->GetCamera();
 	m_pScene->SetPlayer(m_pPlayer);
 
-	if (m_pScene) m_pScene->BuildObjects(m_pd3dDevice, m_pd3dCommandList);
+	if (m_pScene) m_pScene->BuildObjects(m_pd3dDevice, m_pd3dCommandList, m_pd3dSrvDescriptorHeap, m_nSrvDescriptorIncrementSize);
 
 	m_pd3dCommandList->Close();
 	ID3D12CommandList *ppd3dCommandLists[] = { m_pd3dCommandList };
@@ -581,7 +604,7 @@ void CGameFramework::FrameAdvance()
 
 	if (m_pScene) m_pScene->PrepareRender(m_pd3dCommandList);
 	UpdateShaderVariables();
-	if (m_pScene) m_pScene->Render(m_pd3dCommandList, m_pCamera);
+	if (m_pScene) m_pScene->Render(m_pd3dCommandList, m_pCamera, m_pd3dSrvDescriptorHeap);
 
 #ifdef _WITH_PLAYER_TOP
 	m_pd3dCommandList->ClearDepthStencilView(d3dDsvCPUDescriptorHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, NULL);

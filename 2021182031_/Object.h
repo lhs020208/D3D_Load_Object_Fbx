@@ -68,6 +68,11 @@ public:
 	float FallingSpeed = 0.0f;
 	float Height;
 	XMFLOAT3 LastUpVector = GetUp();  // 초기화 필요
+
+	ID3D12DescriptorHeap* m_pd3dSrvDescriptorHeap = nullptr;
+	UINT m_nSrvDescriptorIncrementSize = 0;
+
+	void SetSrvDescriptorInfo(ID3D12DescriptorHeap* heap, UINT inc);
 };
 
 class CCubeObject : public CGameObject

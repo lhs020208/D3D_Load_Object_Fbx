@@ -16,7 +16,8 @@ CScene::~CScene()
 {
 }
 
-void CScene::BuildObjects(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList)
+void CScene::BuildObjects(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, 
+	ID3D12DescriptorHeap* m_pd3dSrvDescriptorHeap, UINT m_nSrvDescriptorIncrementSize)
 {
 	
 }
@@ -104,7 +105,7 @@ void CScene::PrepareRender(ID3D12GraphicsCommandList* pd3dCommandList)
 	pd3dCommandList->SetGraphicsRootSignature(m_pd3dGraphicsRootSignature);
 }
 
-void CScene::Render(ID3D12GraphicsCommandList *pd3dCommandList, CCamera *pCamera)
+void CScene::Render(ID3D12GraphicsCommandList *pd3dCommandList, CCamera *pCamera, ID3D12DescriptorHeap* m_pd3dSrvDescriptorHeap)
 {
 }
 void CScene::BuildGraphicsRootSignature(ID3D12Device* pd3dDevice)
@@ -140,7 +141,8 @@ struct LIGHT_CB
 	XMFLOAT3 LightColor;     float pad2 = 0.0f;
 };
 
-void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList* pd3dCommandList)
+void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList* pd3dCommandList, 
+	ID3D12DescriptorHeap* m_pd3dSrvDescriptorHeap, UINT m_nSrvDescriptorIncrementSize)
 {
 	//m_pd3dGraphicsRootSignature = CreateGraphicsRootSignature(pd3dDevice);
 	CSkinnedLightingShader* pShader = new CSkinnedLightingShader();
@@ -184,8 +186,14 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandLis
 	memcpy(pMapped, &lightData, sizeof(LIGHT_CB));
 	m_pLightCB->Unmap(0, nullptr);
 
+	m_pPlayer->SetSrvDescriptorInfo(m_pd3dSrvDescriptorHeap,m_nSrvDescriptorIncrementSize);
+	UINT nextSrvIndex = 0;
+
 	CMesh* pCubeMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.fbx", 2);
 	//CMesh* pCubeMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/HumanCharacterDummy_F.fbx", 2);
+	pCubeMesh->LoadTextureFromFile(pd3dDevice, pd3dCommandList, m_pd3dSrvDescriptorHeap, nextSrvIndex,
+		L"Models/Texture/body_01.png");
+	nextSrvIndex++;
 
 	m_pPlayer->SetMesh(0, pCubeMesh);
 	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
@@ -193,7 +201,6 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandLis
 
 	m_pPlayer -> CreateShaderVariables(pd3dDevice, pd3dCommandList);
 	m_pPlayer -> SetShader(pShader);
-
 }
 
 void CTankScene::ReleaseObjects()
@@ -203,7 +210,7 @@ void CTankScene::ReleaseObjects()
 void CTankScene::ReleaseUploadBuffers()
 {
 }
-void CTankScene::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera)
+void CTankScene::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera, ID3D12DescriptorHeap* m_pd3dSrvDescriptorHeap)
 {
 	pCamera->SetViewportsAndScissorRects(pd3dCommandList);
 	pCamera->UpdateShaderVariables(pd3dCommandList);
@@ -219,6 +226,9 @@ void CTankScene::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCa
 	// 렌더 시 바인딩
 	if (m_pLightCB)
 		pd3dCommandList->SetGraphicsRootConstantBufferView(3, m_pLightCB->GetGPUVirtualAddress());
+
+	ID3D12DescriptorHeap* ppHeaps[] = { m_pd3dSrvDescriptorHeap };
+	pd3dCommandList->SetDescriptorHeaps(1, ppHeaps);
 
 	if (m_pPlayer) m_pPlayer->Render(pd3dCommandList, pCamera);
 }

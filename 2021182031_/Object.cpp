@@ -103,14 +103,40 @@ void CGameObject::Render(ID3D12GraphicsCommandList *pd3dCommandList, CCamera *pC
 	OnPrepareRender();
 
 	UpdateShaderVariables(pd3dCommandList);
+	if (!m_pd3dSrvDescriptorHeap)
+	{
+		OutputDebugStringA("[Error] SRV Heap is NULL in CGameObject::Render\n");
+		return; // 또는 예외 방지
+	}
+
+
 	if (m_pShader) m_pShader->Render(pd3dCommandList, pCamera);
 	if (m_ppMeshes)
 	{
 		for (int i = 0; i < m_nMeshes; i++)
 		{
+			if (m_ppMeshes[i]->m_nTextureDescriptorIndex == UINT_MAX)
+			{
+				OutputDebugStringA("[Error] Mesh has no texture loaded\n");
+				continue;
+			}
+			pd3dCommandList->SetGraphicsRootDescriptorTable(
+				4,
+				CD3DX12_GPU_DESCRIPTOR_HANDLE(
+					m_pd3dSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
+					m_ppMeshes[i]->m_nTextureDescriptorIndex,
+					m_nSrvDescriptorIncrementSize
+				)
+			);
+
 			if (m_ppMeshes[i]) m_ppMeshes[i]->Render(pd3dCommandList);
 		}
 	}
+}
+void CGameObject::SetSrvDescriptorInfo(ID3D12DescriptorHeap* heap, UINT inc)
+{
+	m_pd3dSrvDescriptorHeap = heap;
+	m_nSrvDescriptorIncrementSize = inc;
 }
 
 void CGameObject::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera, XMFLOAT4X4* pxmf4x4World)

@@ -24,6 +24,7 @@ public:
 	void CreateRenderTargetViewsAndDepthStencilView();
 
 	void ChangeSwapChainState();
+	void CreateSrvDescriptorHeap();
 
     void BuildObjects();
     void ReleaseObjects();
@@ -69,6 +70,9 @@ private:
 	ID3D12Resource				*m_pd3dDepthStencilBuffer;
 	ID3D12DescriptorHeap		*m_pd3dDsvDescriptorHeap;
 	UINT						m_nDsvDescriptorIncrementSize;
+
+	ID3D12DescriptorHeap		*m_pd3dSrvDescriptorHeap = nullptr;
+	UINT						m_nSrvDescriptorIncrementSize = 0;
 
 	ID3D12CommandAllocator		*m_pd3dCommandAllocator;
 	ID3D12CommandQueue			*m_pd3dCommandQueue;

@@ -76,6 +76,14 @@ public:
 
 	BoundingBox						m_xmBoundingBox;
 	BoundingOrientedBox			    m_xmOOBB = BoundingOrientedBox();
+
+	// ----------------------
+	// Texture (SRV) 관련 멤버
+	// ----------------------
+	ID3D12Resource* m_pd3dTexture = nullptr;
+	ID3D12Resource* m_pd3dTextureUploadBuffer = nullptr;
+	// 이 Mesh의 텍스처가 DescriptorHeap(SRV Heap)에서 점유하는 슬롯 번호
+	UINT                m_nTextureDescriptorIndex = UINT_MAX;
 protected:
 	UINT							m_nVertices = 0;
 	XMFLOAT3						*m_pxmf3Positions = NULL;
@@ -129,14 +137,6 @@ protected:
 	CAnimator*						m_pAnimator = nullptr;   // 애니메이션 관리자
 	bool							m_bSkinnedMesh = false;        // 스키닝 메시 여부
 
-	// ----------------------
-	// Texture (SRV) 관련 멤버
-	// ----------------------
-	ID3D12Resource* m_pd3dTexture = nullptr;
-	ID3D12Resource* m_pd3dTextureUploadBuffer = nullptr;
-	// 이 Mesh의 텍스처가 DescriptorHeap(SRV Heap)에서 점유하는 슬롯 번호
-	UINT                m_nTextureDescriptorIndex = UINT_MAX;
-
 public:
 	virtual void Render(ID3D12GraphicsCommandList *pd3dCommandList);
 
@@ -146,4 +146,5 @@ public:
 
 	void LoadTextureFromFile(ID3D12Device* device,ID3D12GraphicsCommandList* cmdList,
 		ID3D12DescriptorHeap* srvHeap,UINT descriptorIndex,const wchar_t* fileName);
+	void CreateSRV(ID3D12Device* device, ID3D12DescriptorHeap* srvHeap);
 };
