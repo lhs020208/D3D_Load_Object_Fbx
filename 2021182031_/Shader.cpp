@@ -53,11 +53,25 @@ D3D12_SHADER_BYTECODE CShader::CompileShaderFromFile(WCHAR *pszFileName, LPCSTR 
 
 D3D12_INPUT_LAYOUT_DESC CShader::CreateInputLayout()
 {
-	D3D12_INPUT_LAYOUT_DESC d3dInputLayoutDesc;
-	d3dInputLayoutDesc.pInputElementDescs = NULL;
-	d3dInputLayoutDesc.NumElements = 0;
+	static D3D12_INPUT_ELEMENT_DESC d3dInputElementDescs[] =
+	{
+		// 위치
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,
+			0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 
-	return(d3dInputLayoutDesc);
+			// 법선
+			{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,
+				12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+
+				// 텍스처 좌표
+				{ "TEXTURECOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0,
+					24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	};
+
+	D3D12_INPUT_LAYOUT_DESC d3dInputLayoutDesc = {};
+	d3dInputLayoutDesc.pInputElementDescs = d3dInputElementDescs;
+	d3dInputLayoutDesc.NumElements = _countof(d3dInputElementDescs);
+	return d3dInputLayoutDesc;
 }
 
 D3D12_RASTERIZER_DESC CShader::CreateRasterizerState()
@@ -183,19 +197,33 @@ CLightingShader::~CLightingShader()
 
 D3D12_INPUT_LAYOUT_DESC CLightingShader::CreateInputLayout()
 {
-	UINT nInputElementDescs = 3;
-	D3D12_INPUT_ELEMENT_DESC *pd3dInputElementDescs = new D3D12_INPUT_ELEMENT_DESC[nInputElementDescs];
+	static D3D12_INPUT_ELEMENT_DESC d3dInputElementDescs[] =
+	{
+		// position (float3)
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,
+			0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 
-	pd3dInputElementDescs[0] = { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
-	pd3dInputElementDescs[1] = { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
-	pd3dInputElementDescs[2] = { "TEXTURECOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
+			// normal (float3)
+			{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,
+				12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 
+				// uv(float2)
+				{ "TEXTURECOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0,
+					24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 
-	D3D12_INPUT_LAYOUT_DESC d3dInputLayoutDesc;
-	d3dInputLayoutDesc.pInputElementDescs = pd3dInputElementDescs;
-	d3dInputLayoutDesc.NumElements = nInputElementDescs;
+					// bone indices (uint4)
+					{ "BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_UINT, 0,
+						32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 
-	return(d3dInputLayoutDesc);
+						// bone weights (float4)
+						{ "BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0,
+							48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	};
+
+	D3D12_INPUT_LAYOUT_DESC d3dInputLayoutDesc = {};
+	d3dInputLayoutDesc.pInputElementDescs = d3dInputElementDescs;
+	d3dInputLayoutDesc.NumElements = _countof(d3dInputElementDescs);
+	return d3dInputLayoutDesc;
 }
 
 D3D12_SHADER_BYTECODE CLightingShader::CreateVertexShader(ID3DBlob **ppd3dShaderBlob)
