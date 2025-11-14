@@ -6,6 +6,7 @@
 
 #include "Shader.h"
 #include "Player.h"
+#include "AssetManager.h"
 
 class CScene
 {

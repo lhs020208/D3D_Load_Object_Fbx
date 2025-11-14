@@ -56,7 +56,7 @@ std::string GetTextureFileNameForSubMesh_UnityChan(const SubMesh& sm)
     if (mat.find("face") != std::string::npos ||
         mesh.find("face") != std::string::npos ||
         mat.find("eye") != std::string::npos)
-        return "face_01.png";
+        return "face_00.png";
 
     // -----------------------------
     // Clothes / Costume
@@ -64,10 +64,10 @@ std::string GetTextureFileNameForSubMesh_UnityChan(const SubMesh& sm)
     if (mat.find("cloth") != std::string::npos ||
         mat.find("costume") != std::string::npos ||
         mesh.find("cloth") != std::string::npos)
-        return "cloth_01.png";
+        return "skin_01.png";
 
     // Fallback
-    return "default.png";
+    return "skin_01.png";
 }
 std::string GetTextureFileNameForSubMesh_BoxMan(const SubMesh& sm)
 {

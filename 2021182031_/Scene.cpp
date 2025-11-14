@@ -251,13 +251,40 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandLis
 	m_pPlayer->SetSrvDescriptorInfo(m_pd3dSrvDescriptorHeap,m_nSrvDescriptorIncrementSize);
 	UINT nextSrvIndex = 0;
 
-	CMesh* pCubeMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.fbx", 2);
+	// 1) UnityChan Mesh 로드
+	CMesh* mesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.fbx", 2);
 	//CMesh* pCubeMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/HumanCharacterDummy_F.fbx", 2);
-	//pCubeMesh->LoadTextureFromFile(pd3dDevice, pd3dCommandList, m_pd3dSrvDescriptorHeap, nextSrvIndex,
-	//	L"Models/Texture/body_01.png");
-	//nextSrvIndex++;
 
-	m_pPlayer->SetMesh(0, pCubeMesh);
+	// 2) GameObject에 Mesh 장착
+	m_pPlayer->SetMesh(0, mesh);
+	m_pPlayer->SetSrvDescriptorInfo(m_pd3dSrvDescriptorHeap, m_nSrvDescriptorIncrementSize);
+
+	// 3) Asset 타입 결정
+	AssetType assetType = AssetType::UnityChan;
+
+	// 4) SubMesh 자동 텍스처 매핑
+	UINT baseSRVIndex = 30; // 예시: 이 모델은 SRV 30~39 사용
+	int subIdx = 0;
+
+	for (auto& sm : mesh->m_SubMeshes)
+	{
+		// 4-1) SubMesh 이름 기반으로 텍스처 파일명 얻기
+		std::string texFile = GetTextureFileNameForSubMesh(sm, assetType);
+
+		// 전체 경로 구성
+		std::wstring wpath = ToWstring(std::string("Models/Texture/") + texFile);
+
+		// 4-2) 해당 SubMesh에 텍스처 로드 후 SRV 만들기
+		mesh->LoadTextureFromFile(
+			pd3dDevice, pd3dCommandList, m_pd3dSrvDescriptorHeap,
+			baseSRVIndex + subIdx, // 이 SubMesh가 쓸 SRV index
+			wpath.c_str(),
+			subIdx                  // SubMesh.textureIndex = baseSRVIndex + subIdx;
+		);
+
+		subIdx++;
+	}
+
 	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
 	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, -1.0f, -2.0f));
 
