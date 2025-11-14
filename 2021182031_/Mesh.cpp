@@ -458,8 +458,10 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                 {
                     FbxVector2 u;
                     bool unm = false;
-                    if (mesh->GetPolygonVertexUV(p, v, uvSetName, u, unm))
+                    if (mesh->GetPolygonVertexUV(p, v, uvSetName, u, unm)) {
                         uv = ToXM2(u);
+                        uv.y = 1.0f - uv.y;
+                    }
                 }
 
                 sm.positions.push_back(ToXM3(pw));

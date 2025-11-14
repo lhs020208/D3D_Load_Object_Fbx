@@ -46,32 +46,38 @@ std::string GetTextureFileNameForSubMesh_UnityChan(const SubMesh& sm)
     // Body / Skin
     // -----------------------------
     if (mat.find("body") != std::string::npos ||
-        mesh.find("body") != std::string::npos ||
-        mat.find("skin") != std::string::npos)
+        mesh.find("body") != std::string::npos)
         return "body_01.png";
 
     // -----------------------------
     // Face / Eye
     // -----------------------------
     if (mat.find("face") != std::string::npos ||
-        mesh.find("face") != std::string::npos ||
-        mat.find("eye") != std::string::npos)
+        mesh.find("face") != std::string::npos)
         return "face_00.png";
 
-    // -----------------------------
-    // Clothes / Costume
-    // -----------------------------
-    if (mat.find("cloth") != std::string::npos ||
-        mat.find("skin") != std::string::npos ||
-        mat.find("body") != std::string::npos ||
-        mesh.find("cloth") != std::string::npos)
-        return "body_01.png";
 
-    if (mat.find("eye_L1") != std::string::npos )
+    // -----------------------------
+    // eye
+    // -----------------------------
+    if (mat.find("eye_L") != std::string::npos  ||
+        mesh.find("eye_L") != std::string::npos)
         return "eye_iris_L_00.png";
 
-    if (mat.find("eye_R1") != std::string::npos)
+    if (mat.find("eye_R") != std::string::npos ||
+        mesh.find("eye_R") != std::string::npos)
         return "eye_iris_R_00.png";
+
+    if (mat.find("eyeline") != std::string::npos ||
+        mesh.find("eyeline") != std::string::npos)
+        return "eyeline_00.png";
+
+    // -----------------------------
+    // mat
+    // -----------------------------
+    if (mat.find("mat_cheek") != std::string::npos ||
+        mesh.find("mat_cheek") != std::string::npos)
+        return "cheek_00.png";
 
     // Fallback
     return "skin_01.png";
