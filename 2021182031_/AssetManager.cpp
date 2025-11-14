@@ -62,9 +62,16 @@ std::string GetTextureFileNameForSubMesh_UnityChan(const SubMesh& sm)
     // Clothes / Costume
     // -----------------------------
     if (mat.find("cloth") != std::string::npos ||
-        mat.find("costume") != std::string::npos ||
+        mat.find("skin") != std::string::npos ||
+        mat.find("body") != std::string::npos ||
         mesh.find("cloth") != std::string::npos)
-        return "skin_01.png";
+        return "body_01.png";
+
+    if (mat.find("eye_L1") != std::string::npos )
+        return "eye_iris_L_00.png";
+
+    if (mat.find("eye_R1") != std::string::npos)
+        return "eye_iris_R_00.png";
 
     // Fallback
     return "skin_01.png";
