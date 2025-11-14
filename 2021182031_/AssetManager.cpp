@@ -64,14 +64,13 @@ std::string GetTextureFileNameForSubMesh_UnityChan(const SubMesh& sm)
         mesh.find("eyeline") != std::string::npos)
         return "eyeline_00.png";
 
-    if (mat.find("eye") != std::string::npos  ||
-        mesh.find("eye") != std::string::npos)
-        return "eye_iris_L_00.png";
-
     if (mat.find("eye_R") != std::string::npos ||
         mesh.find("eye_R") != std::string::npos)
         return "eye_iris_R_00.png";
 
+    if (mat.find("eye") != std::string::npos  ||
+        mesh.find("eye") != std::string::npos)
+        return "eye_iris_L_00.png";
 
     // -----------------------------
     // mat

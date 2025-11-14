@@ -182,5 +182,6 @@ float4 PSLighting(VS_OUTPUT input) : SV_TARGET
     
     float4 texColor = gDiffuseMap.Sample(gSampler, input.uv);
     
-    return texColor * float4(finalLight, 1.0f);
+    return float4(texColor.rgb * finalLight, texColor.a);
+
 }
