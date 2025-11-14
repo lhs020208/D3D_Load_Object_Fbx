@@ -122,6 +122,15 @@ void CGameObject::SetSrvDescriptorInfo(ID3D12DescriptorHeap* heap, UINT inc)
 {
 	m_pd3dSrvDescriptorHeap = heap;
 	m_nSrvDescriptorIncrementSize = inc;
+
+	if (m_ppMeshes)
+	{
+		for (int i = 0; i < m_nMeshes; ++i)
+		{
+			if (m_ppMeshes[i])
+				m_ppMeshes[i]->SetSrvDescriptorInfo(heap, inc);
+		}
+	}
 }
 
 void CGameObject::ReleaseUploadBuffers()
