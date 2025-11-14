@@ -89,6 +89,7 @@ private:
 public:
 	void AddRef() { m_nReferences++; }
 	void Release() { if (--m_nReferences <= 0) delete this; }
+	void SetSrvDescriptorInfo(ID3D12DescriptorHeap* heap, UINT inc);
 
 	void ReleaseUploadBuffers();
     void SetPolygon(int nIndex, CPolygon* pPolygon);
@@ -158,6 +159,10 @@ protected:
 
 	CAnimator*						m_pAnimator = nullptr;   // 애니메이션 관리자
 	bool							m_bSkinnedMesh = false;        // 스키닝 메시 여부
+
+	ID3D12DescriptorHeap			*m_pd3dSrvDescriptorHeap = nullptr;
+	UINT							m_nSrvDescriptorIncrementSize = 0;
+	UINT							m_nTextureRootParameterIndex = 5;  // t0이 RootParam5라고 가정
 
 public:
 	virtual void Render(ID3D12GraphicsCommandList *pd3dCommandList);

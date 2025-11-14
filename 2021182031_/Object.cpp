@@ -98,12 +98,14 @@ void CGameObject::ReleaseShaderVariables()
 {
 }
 
-void CGameObject::Render(ID3D12GraphicsCommandList *pd3dCommandList, CCamera *pCamera)
+void CGameObject::Render(ID3D12GraphicsCommandList* cmd, CCamera* pCamera)
 {
 	OnPrepareRender();
-	UpdateShaderVariables(pd3dCommandList);
+	UpdateShaderVariables(cmd);
 
-	if (m_pShader) m_pShader->Render(pd3dCommandList, pCamera);
+	if (m_pShader)
+		m_pShader->Render(cmd, pCamera);
+
 	if (m_ppMeshes)
 	{
 		for (int i = 0; i < m_nMeshes; i++)
@@ -111,48 +113,15 @@ void CGameObject::Render(ID3D12GraphicsCommandList *pd3dCommandList, CCamera *pC
 			CMesh* pMesh = m_ppMeshes[i];
 			if (!pMesh) continue;
 
-			// -------------------------------------------
-			// 2) ★★ SRV DescriptorTable 바인딩 (t0)
-			// RootParameterIndex = 5
-			// -------------------------------------------
-			if (m_pd3dSrvDescriptorHeap && pMesh->m_nTextureDescriptorIndex != UINT_MAX)
-			{
-				D3D12_GPU_DESCRIPTOR_HANDLE srvHandle =
-					CD3DX12_GPU_DESCRIPTOR_HANDLE(
-						m_pd3dSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
-						pMesh->m_nTextureDescriptorIndex,
-						m_nSrvDescriptorIncrementSize
-					);
-
-				pd3dCommandList->SetGraphicsRootDescriptorTable(5, srvHandle);
-			}
-
-			// -------------------------------------------
-			// 3) Draw 호출
-			// -------------------------------------------
-			pMesh->Render(pd3dCommandList);
+			pMesh->Render(cmd);   // SubMesh 렌더링은 내부에서 처리
 		}
 	}
 }
+
 void CGameObject::SetSrvDescriptorInfo(ID3D12DescriptorHeap* heap, UINT inc)
 {
 	m_pd3dSrvDescriptorHeap = heap;
 	m_nSrvDescriptorIncrementSize = inc;
-}
-
-void CGameObject::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera, XMFLOAT4X4* pxmf4x4World)
-{
-	OnPrepareRender();
-	UpdateShaderVariables(pd3dCommandList, pxmf4x4World);
-
-	if (m_pShader) m_pShader->Render(pd3dCommandList, pCamera);
-	if (m_ppMeshes)
-	{
-		for (int i = 0; i < m_nMeshes; i++)
-		{
-			if (m_ppMeshes[i]) m_ppMeshes[i]->Render(pd3dCommandList);
-		}
-	}
 }
 
 void CGameObject::ReleaseUploadBuffers()

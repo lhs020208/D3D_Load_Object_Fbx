@@ -35,8 +35,7 @@ public:
 
 	virtual void Animate(float fTimeElapsed);
 	virtual void OnPrepareRender() { }
-	virtual void Render(ID3D12GraphicsCommandList *pd3dCommandList, CCamera *pCamera = NULL);
-	virtual void Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera, XMFLOAT4X4* pxmf4x4World);
+	virtual void Render(ID3D12GraphicsCommandList* cmd, CCamera* pCamera);
 	virtual void ReleaseUploadBuffers();
 
 	XMFLOAT3 GetPosition();

@@ -124,9 +124,32 @@ void CMesh::Render(ID3D12GraphicsCommandList* cmd)
 
     for (auto& sm : m_SubMeshes)
     {
+        // --------------------------------------------------------
+        // 1) SubMesh 텍스처 바인딩 (textureIndex가 유효한 경우)
+        // --------------------------------------------------------
+        if (m_pd3dSrvDescriptorHeap && sm.textureIndex != UINT_MAX)
+        {
+            CD3DX12_GPU_DESCRIPTOR_HANDLE hGPU(
+                m_pd3dSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
+                sm.textureIndex,
+                m_nSrvDescriptorIncrementSize
+            );
+
+            cmd->SetGraphicsRootDescriptorTable(
+                m_nTextureRootParameterIndex, // 일반적으로 5
+                hGPU
+            );
+        }
+
+        // --------------------------------------------------------
+        // 2) VB/IB 바인딩
+        // --------------------------------------------------------
         cmd->IASetVertexBuffers(0, 1, &sm.vbView);
         cmd->IASetIndexBuffer(&sm.ibView);
 
+        // --------------------------------------------------------
+        // 3) Draw
+        // --------------------------------------------------------
         cmd->DrawIndexedInstanced(
             (UINT)sm.indices.size(),
             1, 0, 0, 0
@@ -725,4 +748,10 @@ void CMesh::CreateSRV(ID3D12Device* device, ID3D12DescriptorHeap* srvHeap)
         m_pd3dTexture,
         &srvDesc,
         handle);
+}
+
+void CMesh::SetSrvDescriptorInfo(ID3D12DescriptorHeap* heap, UINT inc)
+{
+    m_pd3dSrvDescriptorHeap = heap;
+    m_nSrvDescriptorIncrementSize = inc;
 }
