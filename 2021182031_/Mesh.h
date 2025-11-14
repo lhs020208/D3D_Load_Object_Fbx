@@ -171,8 +171,11 @@ public:
 	void LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const char* filename);
 	void EnableSkinning(int nBones);
 
+	//void LoadTextureFromFile(ID3D12Device* device,ID3D12GraphicsCommandList* cmdList,
+	//	ID3D12DescriptorHeap* srvHeap,UINT descriptorIndex,const wchar_t* fileName);
+	// 구버전. 서브메시 아닌 경우에만 사용 가능
 	void LoadTextureFromFile(ID3D12Device* device,ID3D12GraphicsCommandList* cmdList,
-		ID3D12DescriptorHeap* srvHeap,UINT descriptorIndex,const wchar_t* fileName);
+		ID3D12DescriptorHeap* srvHeap,UINT descriptorIndex,const wchar_t* fileName,int subMeshIndex);
 	void CreateSRV(ID3D12Device* device, ID3D12DescriptorHeap* srvHeap);
 	
 	vector<SubMesh> m_SubMeshes;

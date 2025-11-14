@@ -251,9 +251,9 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandLis
 
 	CMesh* pCubeMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.fbx", 2);
 	//CMesh* pCubeMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/HumanCharacterDummy_F.fbx", 2);
-	pCubeMesh->LoadTextureFromFile(pd3dDevice, pd3dCommandList, m_pd3dSrvDescriptorHeap, nextSrvIndex,
-		L"Models/Texture/body_01.png");
-	nextSrvIndex++;
+	//pCubeMesh->LoadTextureFromFile(pd3dDevice, pd3dCommandList, m_pd3dSrvDescriptorHeap, nextSrvIndex,
+	//	L"Models/Texture/body_01.png");
+	//nextSrvIndex++;
 
 	m_pPlayer->SetMesh(0, pCubeMesh);
 	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
