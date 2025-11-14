@@ -71,18 +71,18 @@ CMesh::~CMesh()
     m_nTextureDescriptorIndex = UINT_MAX;
 
     // ---- 기존 Mesh 리소스 해제 ----
-    if (m_pxmf3Positions) delete[] m_pxmf3Positions;
-    if (m_pxmf3Normals)   delete[] m_pxmf3Normals;
-    if (m_pxmf2TextureCoords) delete[] m_pxmf2TextureCoords;
+    //if (m_pxmf3Positions) delete[] m_pxmf3Positions;
+    //if (m_pxmf3Normals)   delete[] m_pxmf3Normals;
+    //if (m_pxmf2TextureCoords) delete[] m_pxmf2TextureCoords;
 
-    if (m_pnIndices) delete[] m_pnIndices;
+    //if (m_pnIndices) delete[] m_pnIndices;
 
-    if (m_pd3dVertexBufferViews) delete[] m_pd3dVertexBufferViews;
+    //if (m_pd3dVertexBufferViews) delete[] m_pd3dVertexBufferViews;
 
-    if (m_pd3dPositionBuffer) m_pd3dPositionBuffer->Release();
-    if (m_pd3dNormalBuffer) m_pd3dNormalBuffer->Release();
-    if (m_pd3dTextureCoordBuffer) m_pd3dTextureCoordBuffer->Release();
-    if (m_pd3dIndexBuffer) m_pd3dIndexBuffer->Release();
+    //if (m_pd3dPositionBuffer) m_pd3dPositionBuffer->Release();
+    //if (m_pd3dNormalBuffer) m_pd3dNormalBuffer->Release();
+    //if (m_pd3dTextureCoordBuffer) m_pd3dTextureCoordBuffer->Release();
+    //if (m_pd3dIndexBuffer) m_pd3dIndexBuffer->Release();
 
     if (m_pd3dBoneIndexBuffer) m_pd3dBoneIndexBuffer->Release();
     if (m_pd3dBoneWeightBuffer) m_pd3dBoneWeightBuffer->Release();
@@ -103,17 +103,17 @@ CMesh::~CMesh()
 
 void CMesh::ReleaseUploadBuffers() 
 {
-	if (m_pd3dPositionUploadBuffer) m_pd3dPositionUploadBuffer->Release();
-	if (m_pd3dNormalUploadBuffer) m_pd3dNormalUploadBuffer->Release();
-	if (m_pd3dTextureCoordUploadBuffer) m_pd3dTextureCoordUploadBuffer->Release();
-	if (m_pd3dIndexUploadBuffer) m_pd3dIndexUploadBuffer->Release();
+	//if (m_pd3dPositionUploadBuffer) m_pd3dPositionUploadBuffer->Release();
+	//if (m_pd3dNormalUploadBuffer) m_pd3dNormalUploadBuffer->Release();
+	//if (m_pd3dTextureCoordUploadBuffer) m_pd3dTextureCoordUploadBuffer->Release();
+	//if (m_pd3dIndexUploadBuffer) m_pd3dIndexUploadBuffer->Release();
 	if (m_pd3dBoneIndexUploadBuffer) m_pd3dBoneIndexUploadBuffer->Release();
 	if (m_pd3dBoneWeightUploadBuffer) m_pd3dBoneWeightUploadBuffer->Release();
 
-	m_pd3dPositionUploadBuffer = NULL;
-	m_pd3dNormalUploadBuffer = NULL;
-	m_pd3dTextureCoordUploadBuffer = NULL;
-	m_pd3dIndexUploadBuffer = NULL;
+	//m_pd3dPositionUploadBuffer = NULL;
+	//m_pd3dNormalUploadBuffer = NULL;
+	//m_pd3dTextureCoordUploadBuffer = NULL;
+	//m_pd3dIndexUploadBuffer = NULL;
 	m_pd3dBoneIndexUploadBuffer = NULL;
 	m_pd3dBoneWeightUploadBuffer = NULL;
 };
@@ -137,6 +137,7 @@ void CMesh::Render(ID3D12GraphicsCommandList* cmd)
 
 void CMesh::LoadMeshFromOBJ(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, char* filename)
 {
+    /*
 	std::ifstream file(filename);
 	if (!file.is_open()) return;
 
@@ -257,6 +258,7 @@ void CMesh::LoadMeshFromOBJ(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
 	m_xmOOBB = BoundingOrientedBox(center, extent, XMFLOAT4(0, 0, 0, 1));
 
 	delete[] vbData;
+    */
 }
 void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const char* filename)
 {
@@ -522,31 +524,38 @@ void CMesh::SetPolygon(int nIndex, CPolygon* pPolygon)
 	if ((0 <= nIndex) && (nIndex < m_nPolygons)) m_ppPolygons[nIndex] = pPolygon;
 }
 
-int CMesh::CheckRayIntersection(XMVECTOR& xmvPickRayOrigin, XMVECTOR& xmvPickRayDirection, float* pfNearHitDistance)
+int CMesh::CheckRayIntersection(XMVECTOR& rayOrigin, XMVECTOR& rayDir, float* pfNearHitDistance)
 {
-	int nHits = 0;
-	float fNearestHit = FLT_MAX;
+    int hitCount = 0;
+    float nearest = FLT_MAX;
 
-	for (UINT i = 0; i < m_nIndices; i += 3)
-	{
-		XMVECTOR v0 = XMLoadFloat3(&m_pxmf3Positions[m_pnIndices[i]]);
-		XMVECTOR v1 = XMLoadFloat3(&m_pxmf3Positions[m_pnIndices[i + 1]]);
-		XMVECTOR v2 = XMLoadFloat3(&m_pxmf3Positions[m_pnIndices[i + 2]]);
+    for (auto& sm : m_SubMeshes)
+    {
+        const auto& pos = sm.positions;
+        const auto& idx = sm.indices;
 
-		float fDist = 0.0f;
-		if (TriangleTests::Intersects(xmvPickRayOrigin, xmvPickRayDirection, v0, v1, v2, fDist))
-		{
-			if (fDist < fNearestHit)
-			{
-				fNearestHit = fDist;
-				nHits++;
-				if (pfNearHitDistance) *pfNearHitDistance = fNearestHit;
-			}
-		}
-	}
+        for (size_t i = 0; i < idx.size(); i += 3)
+        {
+            XMVECTOR v0 = XMLoadFloat3(&pos[idx[i]]);
+            XMVECTOR v1 = XMLoadFloat3(&pos[idx[i + 1]]);
+            XMVECTOR v2 = XMLoadFloat3(&pos[idx[i + 2]]);
 
-	return nHits;
+            float dist = 0.0f;
+            if (TriangleTests::Intersects(rayOrigin, rayDir, v0, v1, v2, dist))
+            {
+                if (dist < nearest)
+                {
+                    nearest = dist;
+                    hitCount++;
+                    if (pfNearHitDistance) *pfNearHitDistance = nearest;
+                }
+            }
+        }
+    }
+
+    return hitCount;
 }
+
 BOOL CMesh::RayIntersectionByTriangle(XMVECTOR& xmRayOrigin, XMVECTOR& xmRayDirection, XMVECTOR v0, XMVECTOR v1, XMVECTOR v2, float* pfNearHitDistance)
 {
 	float fHitDistance;
