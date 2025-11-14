@@ -52,13 +52,14 @@ CMesh::CMesh(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandLis
 		if (FileType == 1) LoadMeshFromOBJ(pd3dDevice, pd3dCommandList, pstrFileName);
 		if (FileType == 2) LoadMeshFromFBX(pd3dDevice, pd3dCommandList, pstrFileName);
 	}
-    m_pd3dTexture = nullptr;
-    m_pd3dTextureUploadBuffer = nullptr;
-    m_nTextureDescriptorIndex = UINT_MAX;
+    //m_pd3dTexture = nullptr;
+    //m_pd3dTextureUploadBuffer = nullptr;
+    //m_nTextureDescriptorIndex = UINT_MAX;
 }
 
 CMesh::~CMesh()
 {
+    /*
     // ---- Texture Release ----
     if (m_pd3dTexture) {
         m_pd3dTexture->Release();
@@ -71,6 +72,7 @@ CMesh::~CMesh()
 
     // 만약 DescriptorIndex는 Heap에서 자동 소멸되므로 따로 해제 없음
     m_nTextureDescriptorIndex = UINT_MAX;
+    */
 
     // ---- 기존 Mesh 리소스 해제 ----
     //if (m_pxmf3Positions) delete[] m_pxmf3Positions;
@@ -757,64 +759,51 @@ void CMesh::LoadTextureFromFile(ID3D12Device* device, ID3D12GraphicsCommandList*
 }
 */
 
-void CMesh::LoadTextureFromFile(ID3D12Device* device,ID3D12GraphicsCommandList* cmdList,
+void CMesh::LoadTextureFromFile(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList,
     ID3D12DescriptorHeap* srvHeap, UINT descriptorIndex, const wchar_t* fileName, int subMeshIndex)
 {
-    // --- 0) subMeshIndex 검사 ---
     if (subMeshIndex < 0 || subMeshIndex >= (int)m_SubMeshes.size())
-        return; // 잘못된 인덱스면 무시 (또는 assert 해도 됨)
+        return;
 
-    //
-    // --- 1) 기존 LoadTextureFromFile 로직을 그대로 사용 ---
-    //
+    SubMesh& sm = m_SubMeshes[subMeshIndex];
 
-    // 기존 텍스처 제거
-    if (m_pd3dTexture) { m_pd3dTexture->Release(); m_pd3dTexture = nullptr; }
-    if (m_pd3dTextureUploadBuffer) { m_pd3dTextureUploadBuffer->Release(); m_pd3dTextureUploadBuffer = nullptr; }
+    // ---- 기존 텍스처 해제 (SubMesh 전용) ----
+    if (sm.texture) { sm.texture->Release(); sm.texture = nullptr; }
+    if (sm.textureUpload) { sm.textureUpload->Release(); sm.textureUpload = nullptr; }
 
-    // WIC Factory 생성
+    // ---- 1) WIC 로딩 ----
     IWICImagingFactory* wicFactory = nullptr;
-    CoCreateInstance(
-        CLSID_WICImagingFactory,
-        nullptr,
-        CLSCTX_INPROC_SERVER,
-        IID_PPV_ARGS(&wicFactory));
+    CoCreateInstance(CLSID_WICImagingFactory, nullptr,
+        CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wicFactory));
 
-    // PNG/TGA 파일 읽기
     IWICBitmapDecoder* decoder = nullptr;
     wicFactory->CreateDecoderFromFilename(
-        fileName,
-        nullptr,
-        GENERIC_READ,
-        WICDecodeMetadataCacheOnLoad,
-        &decoder);
+        fileName, nullptr, GENERIC_READ,
+        WICDecodeMetadataCacheOnLoad, &decoder);
 
-    // 첫 번째 프레임 읽기
+    if (!decoder) return;
+
     IWICBitmapFrameDecode* frame = nullptr;
     decoder->GetFrame(0, &frame);
 
     UINT width = 0, height = 0;
     frame->GetSize(&width, &height);
 
-    // RGBA32 변환
     IWICFormatConverter* converter = nullptr;
     wicFactory->CreateFormatConverter(&converter);
 
     converter->Initialize(
         frame,
         GUID_WICPixelFormat32bppRGBA,
-        WICBitmapDitherTypeNone,
-        nullptr,
-        0.0,
+        WICBitmapDitherTypeNone, nullptr, 0.0,
         WICBitmapPaletteTypeCustom);
 
     UINT stride = width * 4;
     UINT imageSize = stride * height;
-
     std::unique_ptr<BYTE[]> pixels(new BYTE[imageSize]);
-    converter->CopyPixels(nullptr, stride, imageSize, pixels.get());
+    converter->CopyPixels(0, stride, imageSize, pixels.get());
 
-    // 텍스처 리소스 생성
+    // ---- 2) GPU 텍스처 생성 (SubMesh 전용) ----
     D3D12_RESOURCE_DESC texDesc = {};
     texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     texDesc.Width = width;
@@ -830,43 +819,33 @@ void CMesh::LoadTextureFromFile(ID3D12Device* device,ID3D12GraphicsCommandList* 
         &texDesc,
         D3D12_RESOURCE_STATE_COPY_DEST,
         nullptr,
-        IID_PPV_ARGS(&m_pd3dTexture));
+        IID_PPV_ARGS(&sm.texture));
 
-    // 업로드 버퍼
-    UINT64 uploadBufferSize = GetRequiredIntermediateSize(m_pd3dTexture, 0, 1);
+    UINT64 uploadSize = GetRequiredIntermediateSize(sm.texture, 0, 1);
 
     device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
         D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+        &CD3DX12_RESOURCE_DESC::Buffer(uploadSize),
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
-        IID_PPV_ARGS(&m_pd3dTextureUploadBuffer));
+        IID_PPV_ARGS(&sm.textureUpload));
 
-    // GPU 복사
-    D3D12_SUBRESOURCE_DATA subresource = {};
-    subresource.pData = pixels.get();
-    subresource.RowPitch = stride;
-    subresource.SlicePitch = imageSize;
+    D3D12_SUBRESOURCE_DATA sub = {};
+    sub.pData = pixels.get();
+    sub.RowPitch = stride;
+    sub.SlicePitch = imageSize;
 
-    UpdateSubresources(
-        cmdList,
-        m_pd3dTexture,
-        m_pd3dTextureUploadBuffer,
-        0, 0, 1,
-        &subresource);
+    UpdateSubresources(cmdList, sm.texture, sm.textureUpload,
+        0, 0, 1, &sub);
 
-    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-        m_pd3dTexture,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+    cmdList->ResourceBarrier(1,
+        &CD3DX12_RESOURCE_BARRIER::Transition(
+            sm.texture,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 
-    //
-    // --- 2) SRV 생성 ---
-    //
-
-    m_nTextureDescriptorIndex = descriptorIndex;
-
+    // ---- 3) SRV 생성 ----
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -876,46 +855,19 @@ void CMesh::LoadTextureFromFile(ID3D12Device* device,ID3D12GraphicsCommandList* 
     UINT inc = device->GetDescriptorHandleIncrementSize(
         D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE hCPU(srvHeap->GetCPUDescriptorHandleForHeapStart());
-    hCPU.Offset(descriptorIndex, inc);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE hCPU(
+        srvHeap->GetCPUDescriptorHandleForHeapStart(),
+        descriptorIndex, inc);
 
-    device->CreateShaderResourceView(m_pd3dTexture, &srvDesc, hCPU);
+    device->CreateShaderResourceView(sm.texture, &srvDesc, hCPU);
 
-    //
-    // --- 3) SubMesh.textureIndex에 SRV 인덱스를 저장 ---
-    //
-    m_SubMeshes[subMeshIndex].textureIndex = descriptorIndex;
+    // ---- 4) 이 SubMesh가 사용할 SRV 인덱스 저장 ----
+    sm.textureIndex = descriptorIndex;
 
-    //
-    // --- 4) 정리 ---
-    //
     frame->Release();
     decoder->Release();
     converter->Release();
     wicFactory->Release();
-}
-
-void CMesh::CreateSRV(ID3D12Device* device, ID3D12DescriptorHeap* srvHeap)
-{
-    if (!m_pd3dTexture) return;
-
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MipLevels = 1;
-
-    UINT increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-    // 이 Mesh가 사용할 descriptor index
-    CD3DX12_CPU_DESCRIPTOR_HANDLE handle(
-        srvHeap->GetCPUDescriptorHandleForHeapStart());
-    handle.Offset(m_nTextureDescriptorIndex, increment);
-
-    device->CreateShaderResourceView(
-        m_pd3dTexture,
-        &srvDesc,
-        handle);
 }
 
 void CMesh::SetSrvDescriptorInfo(ID3D12DescriptorHeap* heap, UINT inc)
