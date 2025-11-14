@@ -379,6 +379,33 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
 
         SubMesh sm;
 
+        // =======================================================
+        // Mesh 이름 저장
+        // =======================================================
+        if (FbxNode* node = mesh->GetNode())
+        {
+            sm.meshName = node->GetName();
+        }
+        else
+        {
+            sm.meshName = "UnnamedMesh";
+        }
+
+        // =======================================================
+        // Material 이름 저장
+        // =======================================================
+        int materialCount = mesh->GetNode() ? mesh->GetNode()->GetMaterialCount() : 0;
+        if (materialCount > 0)
+        {
+            FbxSurfaceMaterial* mat = mesh->GetNode()->GetMaterial(0);
+            if (mat) sm.materialName = mat->GetName();
+            else     sm.materialName = "UnnamedMaterial";
+        }
+        else
+        {
+            sm.materialName = "NoMaterial";
+        }
+
         // ───── 트랜스폼 적용 ─────
         FbxNode* node = mesh->GetNode();
         FbxAMatrix global = node ? node->EvaluateGlobalTransform() : FbxAMatrix();

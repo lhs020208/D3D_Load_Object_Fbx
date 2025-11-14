@@ -65,6 +65,9 @@ struct SubMesh
 
 	UINT textureIndex = UINT_MAX;       // 이 SubMesh가 사용할 텍스처의 SRV 인덱스
 
+	std::string meshName;
+	std::string materialName;
+
 	// GPU 리소스
 	ID3D12Resource* vb = nullptr;
 	ID3D12Resource* vbUpload = nullptr;
