@@ -118,25 +118,22 @@ void CMesh::ReleaseUploadBuffers()
 	m_pd3dBoneWeightUploadBuffer = NULL;
 };
 
-void CMesh::Render(ID3D12GraphicsCommandList *pd3dCommandList)
+void CMesh::Render(ID3D12GraphicsCommandList* cmd)
 {
+    cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	pd3dCommandList->IASetPrimitiveTopology(m_d3dPrimitiveTopology);
-	pd3dCommandList->IASetVertexBuffers(m_nSlot, m_nVertexBufferViews, m_pd3dVertexBufferViews);
-	if (m_bSkinnedMesh && m_pd3dcbBoneTransforms)
-	{
-		pd3dCommandList->SetGraphicsRootConstantBufferView(4, m_pd3dcbBoneTransforms->GetGPUVirtualAddress());
-	}
-	if (m_pd3dIndexBuffer)
-	{
-		pd3dCommandList->IASetIndexBuffer(&m_d3dIndexBufferView);
-		pd3dCommandList->DrawIndexedInstanced(m_nIndices, 1, 0, 0, 0);
-	}
-	else
-	{
-		pd3dCommandList->DrawInstanced(m_nVertices, 1, m_nOffset, 0);
-	}
+    for (auto& sm : m_SubMeshes)
+    {
+        cmd->IASetVertexBuffers(0, 1, &sm.vbView);
+        cmd->IASetIndexBuffer(&sm.ibView);
+
+        cmd->DrawIndexedInstanced(
+            (UINT)sm.indices.size(),
+            1, 0, 0, 0
+        );
+    }
 }
+
 
 void CMesh::LoadMeshFromOBJ(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, char* filename)
 {
@@ -454,6 +451,52 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
     // 7) 정적 메쉬 (스키닝 끔)
     // -----------------------------------------------------------------------------
     m_bSkinnedMesh = false;
+
+    // -----------------------------------------------------------------------------
+    // 8) SubMesh GPU VB/IB 생성
+    // -----------------------------------------------------------------------------
+    for (auto& sm : m_SubMeshes)
+    {
+        // --- Vertex Buffer (pos+normal+uv 하나로 묶어 업로드) ---
+        struct VTX { XMFLOAT3 pos; XMFLOAT3 n; XMFLOAT2 uv; };
+
+        vector<VTX> vtx(sm.positions.size());
+        for (size_t i = 0; i < vtx.size(); i++) {
+            vtx[i].pos = sm.positions[i];
+            vtx[i].n = sm.normals[i];
+            vtx[i].uv = sm.uvs[i];
+        }
+
+        UINT vbSize = (UINT)(sizeof(VTX) * vtx.size());
+
+        sm.vb = CreateBufferResource(
+            device, cmdList,
+            vtx.data(), vbSize,
+            D3D12_HEAP_TYPE_DEFAULT,
+            D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+            &sm.vbUpload
+        );
+
+        sm.vbView.BufferLocation = sm.vb->GetGPUVirtualAddress();
+        sm.vbView.SizeInBytes = vbSize;
+        sm.vbView.StrideInBytes = sizeof(VTX);
+
+        // --- Index Buffer ---
+        UINT ibSize = (UINT)(sizeof(UINT) * sm.indices.size());
+
+        sm.ib = CreateBufferResource(
+            device, cmdList,
+            sm.indices.data(), ibSize,
+            D3D12_HEAP_TYPE_DEFAULT,
+            D3D12_RESOURCE_STATE_INDEX_BUFFER,
+            &sm.ibUpload
+        );
+
+        sm.ibView.BufferLocation = sm.ib->GetGPUVirtualAddress();
+        sm.ibView.SizeInBytes = ibSize;
+        sm.ibView.Format = DXGI_FORMAT_R32_UINT;
+    }
+
 
     // 로그
     std::ostringstream log;
