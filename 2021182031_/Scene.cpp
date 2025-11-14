@@ -5,6 +5,8 @@
 #include "stdafx.h"
 #include "Scene.h"
 #include "GameFramework.h"
+#include "AssetManager.h"
+
 extern CGameFramework* g_pFramework;
 
 CScene::CScene(CPlayer* pPlayer)

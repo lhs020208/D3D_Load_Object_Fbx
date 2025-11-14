@@ -44,6 +44,8 @@ static inline void ApplyAxisFix(XMFLOAT3& p, XMFLOAT3& n, AxisFix fix, bool& fli
     if (fix.flipX) { p.x = -p.x; n.x = -n.x; flipWinding = !flipWinding; }
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+
 CMesh::CMesh(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName, int FileType)
 {
 	if (pstrFileName) {
