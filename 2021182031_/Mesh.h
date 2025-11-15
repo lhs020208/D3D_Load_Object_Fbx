@@ -3,6 +3,7 @@
 //-----------------------------------------------------------------------------
 
 #pragma once
+#include "CAnimator.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -84,7 +85,7 @@ struct SubMesh
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-class CAnimator;
+//class CAnimator;
 class CMesh
 {
 public:
@@ -187,4 +188,33 @@ public:
 		ID3D12DescriptorHeap* srvHeap,UINT descriptorIndex,const wchar_t* fileName,int subMeshIndex);
 	
 	vector<SubMesh> m_SubMeshes;
+
+public:
+	void SetAnimator(CAnimator* pAnimator);
+	CAnimator* GetAnimator() const { return m_pAnimator; }
+
+	int GetBoneCount() const { return (int)m_Bones.size(); }
+
+	// boneName → boneIndex 변환
+	int GetBoneIndexByName(const std::string& name) const
+	{
+		auto it = m_BoneNameToIndex.find(name);
+		if (it == m_BoneNameToIndex.end()) return -1;
+		return it->second;
+	}
+
+	// 본의 offsetMatrix 반환
+	const XMFLOAT4X4& GetBoneOffsetMatrix(int index) const
+	{
+		return m_Bones[index].offsetMatrix;
+	}
+
+	// 본의 parentIndex 반환
+	int GetBoneParentIndex(int index) const
+	{
+		return m_Bones[index].parentIndex;
+	}
+
+	// Animator 결과를 GPU CBV로 업로드
+	void UpdateBoneTransforms(ID3D12GraphicsCommandList* cmd);
 };
