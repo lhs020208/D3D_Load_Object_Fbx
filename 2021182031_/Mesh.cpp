@@ -586,17 +586,30 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
     // -----------------------------------------------------------------------------
     for (auto& sm : m_SubMeshes)
     {
-        // --- Vertex Buffer (pos+normal+uv 하나로 묶어 업로드) ---
-        struct VTX { XMFLOAT3 pos; XMFLOAT3 n; XMFLOAT2 uv; };
+        // --- Vertex Buffer (pos + normal + uv + boneIndices + boneWeights) ---
+        struct VTX
+        {
+            XMFLOAT3 pos;
+            XMFLOAT3 n;
+            XMFLOAT2 uv;
+            XMUINT4  boneIndices;
+            XMFLOAT4 boneWeights;
+        };
 
-        vector<VTX> vtx(sm.positions.size());
-        for (size_t i = 0; i < vtx.size(); i++) {
+        const size_t vcount = sm.positions.size();
+        const size_t icount = sm.indices.size();
+
+        vector<VTX> vtx(vcount);
+        for (size_t i = 0; i < vcount; i++)
+        {
             vtx[i].pos = sm.positions[i];
             vtx[i].n = sm.normals[i];
             vtx[i].uv = sm.uvs[i];
+            vtx[i].boneIndices = sm.boneIndices[i];
+            vtx[i].boneWeights = sm.boneWeights[i];
         }
 
-        UINT vbSize = (UINT)(sizeof(VTX) * vtx.size());
+        UINT vbSize = static_cast<UINT>(sizeof(VTX) * vtx.size());
 
         sm.vb = CreateBufferResource(
             device, cmdList,
@@ -611,7 +624,7 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
         sm.vbView.StrideInBytes = sizeof(VTX);
 
         // --- Index Buffer ---
-        UINT ibSize = (UINT)(sizeof(UINT) * sm.indices.size());
+        UINT ibSize = static_cast<UINT>(sizeof(UINT) * icount);
 
         sm.ib = CreateBufferResource(
             device, cmdList,
