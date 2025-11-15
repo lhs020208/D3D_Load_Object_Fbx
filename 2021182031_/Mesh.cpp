@@ -555,6 +555,21 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
         m_xmOOBB = BoundingOrientedBox(c, e, XMFLOAT4(0, 0, 0, 1));
     }
 
+    if (m_pAnimator)
+    {
+        int nBones = (int)m_Bones.size();
+
+        // 1) 본 개수 전달
+        m_pAnimator->SetBoneCount(nBones);
+
+        // 2) OffsetMatrix / ParentIndex 전달
+        for (int i = 0; i < nBones; ++i)
+        {
+            m_pAnimator->SetBoneOffsetMatrix(i, m_Bones[i].offsetMatrix);
+            m_pAnimator->SetBoneParent(i, m_Bones[i].parentIndex);
+        }
+    }
+
     // -----------------------------------------------------------------------------
     // 7) 정적 메쉬 (스키닝 끔)
     // -----------------------------------------------------------------------------
