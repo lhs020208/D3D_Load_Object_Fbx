@@ -860,3 +860,183 @@ void CMesh::UpdateBoneTransforms(ID3D12GraphicsCommandList* cmd)
     cmd->SetGraphicsRootConstantBufferView(4,
         m_pd3dcbBoneTransforms->GetGPUVirtualAddress());
 }
+
+void CMesh::LoadAnimationFromFBX(const char* filename)
+{
+    if (!m_pAnimator)
+        return; // Animator가 없으면 애니메이션 저장 불가
+
+    // =============================
+    // 0) FBX 초기화
+    // =============================
+    FbxManager* mgr = FbxManager::Create();
+    FbxIOSettings* ios = FbxIOSettings::Create(mgr, IOSROOT);
+    mgr->SetIOSettings(ios);
+
+    FbxImporter* importer = FbxImporter::Create(mgr, "");
+    if (!importer->Initialize(filename, -1, mgr->GetIOSettings()))
+    {
+        importer->Destroy();
+        mgr->Destroy();
+        return;
+    }
+
+    FbxScene* scene = FbxScene::Create(mgr, "animScene");
+    importer->Import(scene);
+    importer->Destroy();
+
+    // =============================
+    // 1) DirectX 좌표계 적용
+    // =============================
+    FbxAxisSystem::DirectX.ConvertScene(scene);
+    FbxSystemUnit::m.ConvertScene(scene);
+
+    // =============================
+    // 2) AnimStack 얻기
+    // =============================
+    int animStackCount = scene->GetSrcObjectCount<FbxAnimStack>();
+    if (animStackCount <= 0)
+    {
+        mgr->Destroy();
+        return;
+    }
+
+    // 보통 하나의 FBX에는 하나의 Stack이 있다.
+    FbxAnimStack* animStack = scene->GetSrcObject<FbxAnimStack>(0);
+    scene->SetCurrentAnimationStack(animStack);
+
+    const char* clipName = animStack->GetName();
+
+    // =============================
+    // 3) 첫 번째 AnimLayer 사용
+    // =============================
+    int layerCount = animStack->GetMemberCount<FbxAnimLayer>();
+    if (layerCount <= 0)
+    {
+        mgr->Destroy();
+        return;
+    }
+    FbxAnimLayer* layer = animStack->GetMember<FbxAnimLayer>(0);
+
+    // =============================
+    // 4) AnimationClip 생성
+    // =============================
+    AnimationClip clip;
+    clip.name = clipName;
+
+    // animStack 기간 계산 (초 단위)
+    FbxTakeInfo* takeInfo = scene->GetTakeInfo(clipName);
+    if (takeInfo)
+    {
+        FbxTime span = takeInfo->mLocalTimeSpan.GetDuration();
+        clip.duration = (float)span.GetSecondDouble();
+    }
+
+    // =============================
+    // 5) 각 Bone 노드를 순회하면서 Track 생성
+    // =============================
+    for (size_t boneIdx = 0; boneIdx < m_Bones.size(); ++boneIdx)
+    {
+        const Bone& bone = m_Bones[boneIdx];
+        const char* boneName = bone.name.c_str();
+
+        // FBX Scene에서 해당 이름의 노드 찾기
+        FbxNode* boneNode = scene->FindNodeByName(boneName);
+        if (!boneNode) continue;
+
+        BoneKeyframes track;
+        track.boneName = boneName;
+        track.boneIndex = (int)boneIdx;
+
+        // Position / Rotation / Scale CurveNode 얻기
+        FbxAnimCurve* tCurve[3] = {
+            boneNode->LclTranslation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_X),
+            boneNode->LclTranslation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Y),
+            boneNode->LclTranslation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Z)
+        };
+
+        FbxAnimCurve* rCurve[3] = {
+            boneNode->LclRotation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_X),
+            boneNode->LclRotation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Y),
+            boneNode->LclRotation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Z)
+        };
+
+        FbxAnimCurve* sCurve[3] = {
+            boneNode->LclScaling.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_X),
+            boneNode->LclScaling.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Y),
+            boneNode->LclScaling.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Z)
+        };
+
+        // 키 개수 구하기 (T/R/S 중 가장 많은 keyCount 사용)
+        int keyCount = 0;
+        for (int i = 0; i < 3; ++i)
+        {
+            if (tCurve[i]) keyCount = max(keyCount, tCurve[i]->KeyGetCount());
+            if (rCurve[i]) keyCount = max(keyCount, rCurve[i]->KeyGetCount());
+            if (sCurve[i]) keyCount = max(keyCount, sCurve[i]->KeyGetCount());
+        }
+
+        // 해당 본에 키프레임이 없는 경우 → 트랙 추가하지 않음
+        if (keyCount == 0) continue;
+
+        // =============================
+        // 6) Keyframe 생성
+        // =============================
+        for (int k = 0; k < keyCount; ++k)
+        {
+            AnimationKey key{};
+
+            // 시간 (기준: T curve 사용, 없으면 R or S)
+            FbxTime t;
+            if (tCurve[0] && k < tCurve[0]->KeyGetCount())
+                t = tCurve[0]->KeyGetTime(k);
+            else if (tCurve[1] && k < tCurve[1]->KeyGetCount())
+                t = tCurve[1]->KeyGetTime(k);
+            else if (tCurve[2] && k < tCurve[2]->KeyGetCount())
+                t = tCurve[2]->KeyGetTime(k);
+            else if (rCurve[0] && k < rCurve[0]->KeyGetCount())
+                t = rCurve[0]->KeyGetTime(k);
+            else if (sCurve[0] && k < sCurve[0]->KeyGetCount())
+                t = sCurve[0]->KeyGetTime(k);
+
+            key.time = (float)t.GetSecondDouble();
+
+            // --- Translation ---
+            key.translation.x = (tCurve[0] && k < tCurve[0]->KeyGetCount()) ? (float)tCurve[0]->KeyGetValue(k) : 0.0f;
+            key.translation.y = (tCurve[1] && k < tCurve[1]->KeyGetCount()) ? (float)tCurve[1]->KeyGetValue(k) : 0.0f;
+            key.translation.z = (tCurve[2] && k < tCurve[2]->KeyGetCount()) ? (float)tCurve[2]->KeyGetValue(k) : 0.0f;
+
+            // --- Rotation (Euler → Quaternion) ---
+            float rx = (rCurve[0] && k < rCurve[0]->KeyGetCount()) ? (float)rCurve[0]->KeyGetValue(k) : 0.0f;
+            float ry = (rCurve[1] && k < rCurve[1]->KeyGetCount()) ? (float)rCurve[1]->KeyGetValue(k) : 0.0f;
+            float rz = (rCurve[2] && k < rCurve[2]->KeyGetCount()) ? (float)rCurve[2]->KeyGetValue(k) : 0.0f;
+
+            // FBX Rotation은 Degrees
+            XMVECTOR q = XMQuaternionRotationRollPitchYaw(
+                XMConvertToRadians(rx),
+                XMConvertToRadians(ry),
+                XMConvertToRadians(rz)
+            );
+            XMStoreFloat4(&key.rotation, q);
+
+            // --- Scale ---
+            key.scale.x = (sCurve[0] && k < sCurve[0]->KeyGetCount()) ? (float)sCurve[0]->KeyGetValue(k) : 1.0f;
+            key.scale.y = (sCurve[1] && k < sCurve[1]->KeyGetCount()) ? (float)sCurve[1]->KeyGetValue(k) : 1.0f;
+            key.scale.z = (sCurve[2] && k < sCurve[2]->KeyGetCount()) ? (float)sCurve[2]->KeyGetValue(k) : 1.0f;
+
+            track.keys.push_back(key);
+        }
+
+        clip.boneTracks.push_back(track);
+    }
+
+    // =============================
+    // 7) Animator에 Clip 등록
+    // =============================
+    m_pAnimator->AddClip(clip);
+
+    // =============================
+    // Fbx Cleanup
+    // =============================
+    mgr->Destroy();
+}
