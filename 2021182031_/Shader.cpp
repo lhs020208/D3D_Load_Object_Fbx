@@ -243,21 +243,18 @@ D3D12_SHADER_BYTECODE CLightingShader::CreatePixelShader(ID3DBlob **ppd3dShaderB
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 D3D12_INPUT_LAYOUT_DESC CSkinnedLightingShader::CreateInputLayout()
 {
-	static D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
-	{
-		{ "POSITION",      0, DXGI_FORMAT_R32G32B32_FLOAT,   0, 0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "NORMAL",        0, DXGI_FORMAT_R32G32B32_FLOAT,   0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TEXTURECOORD",  0, DXGI_FORMAT_R32G32_FLOAT,      0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	D3D12_INPUT_ELEMENT_DESC* d = new D3D12_INPUT_ELEMENT_DESC[5];
 
-		// 스키닝 데이터
-		{ "BLENDINDICES",  0, DXGI_FORMAT_R32G32B32A32_UINT,   0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "BLENDWEIGHT",   0, DXGI_FORMAT_R32G32B32A32_FLOAT,  0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-	};
+	d[0] = { "POSITION",     0, DXGI_FORMAT_R32G32B32_FLOAT,      0,  0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
+	d[1] = { "NORMAL",       0, DXGI_FORMAT_R32G32B32_FLOAT,      0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
+	d[2] = { "TEXTURECOORD", 0, DXGI_FORMAT_R32G32_FLOAT,         0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
+	d[3] = { "BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_UINT,    0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
+	d[4] = { "BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT,   0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
 
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc;
-	inputLayoutDesc.pInputElementDescs = inputElementDescs;
-	inputLayoutDesc.NumElements = _countof(inputElementDescs);
-	return inputLayoutDesc;
+	D3D12_INPUT_LAYOUT_DESC desc{};
+	desc.pInputElementDescs = d;
+	desc.NumElements = 5;
+	return desc;
 }
 
 D3D12_SHADER_BYTECODE CSkinnedLightingShader::CreateVertexShader(ID3DBlob** ppd3dShaderBlob)
