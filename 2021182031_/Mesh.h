@@ -108,7 +108,7 @@ public:
 	BoundingBox						m_xmBoundingBox;
 	BoundingOrientedBox			    m_xmOOBB = BoundingOrientedBox();
 
-protected:
+public:
 	UINT							m_nVertices = 0;
 
 	D3D12_PRIMITIVE_TOPOLOGY		m_d3dPrimitiveTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;

@@ -64,7 +64,7 @@ D3D12_INPUT_LAYOUT_DESC CShader::CreateInputLayout()
 				12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 
 				// ÅØ½ºÃ³ ÁÂÇ¥
-				{ "TEXTURECOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0,
+				{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0,
 					24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 	};
 
@@ -165,7 +165,7 @@ void CShader::CreateShader(ID3D12Device *pd3dDevice, ID3D12RootSignature *pd3dGr
 	if (pd3dVertexShaderBlob) pd3dVertexShaderBlob->Release();
 	if (pd3dPixelShaderBlob) pd3dPixelShaderBlob->Release();
 
-	if (d3dPipelineStateDesc.InputLayout.pInputElementDescs) delete[] d3dPipelineStateDesc.InputLayout.pInputElementDescs;
+	//if (d3dPipelineStateDesc.InputLayout.pInputElementDescs) delete[] d3dPipelineStateDesc.InputLayout.pInputElementDescs;
 }
 
 void CShader::CreateShaderVariables(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList)
@@ -213,7 +213,7 @@ D3D12_INPUT_LAYOUT_DESC CLightingShader::CreateInputLayout()
 				12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 
 				// uv(float2)
-				{ "TEXTURECOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0,
+				{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0,
 					24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 
 					// bone indices (uint4)
@@ -247,7 +247,7 @@ D3D12_INPUT_LAYOUT_DESC CSkinnedLightingShader::CreateInputLayout()
 
 	d[0] = { "POSITION",     0, DXGI_FORMAT_R32G32B32_FLOAT,      0,  0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
 	d[1] = { "NORMAL",       0, DXGI_FORMAT_R32G32B32_FLOAT,      0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
-	d[2] = { "TEXTURECOORD", 0, DXGI_FORMAT_R32G32_FLOAT,         0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
+	d[2] = { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,         0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
 	d[3] = { "BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_UINT,    0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
 	d[4] = { "BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT,   0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
 

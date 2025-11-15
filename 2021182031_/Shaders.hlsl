@@ -42,19 +42,27 @@ struct VS_INPUT
 {
     float3 position : POSITION;
     float3 normal : NORMAL;
-    float2 uv : TEXCOORD0;
+    float2 uv : TEXCOORD;
 };
 
 struct VS_INPUT_SKINNED
 {
     float3 position : POSITION;
     float3 normal : NORMAL;
-    float2 uv : TEXCOORD0;
+    float2 uv : TEXCOORD;
     uint4 boneIndex : BLENDINDICES;
     float4 boneWeight : BLENDWEIGHT;
 };
 
 struct VS_OUTPUT
+{
+    float4 positionH : SV_POSITION;
+    float3 positionW : POSITION;
+    float3 normal : NORMAL0;
+    float3 normalW : NORMAL1;
+    float2 uv : TEXCOORD0;
+};
+struct VS_OUTPUT_SKINNED
 {
     float4 positionH : SV_POSITION;
     float3 positionW : POSITION;
@@ -89,11 +97,10 @@ VS_OUTPUT VSLighting(VS_INPUT input)
 // pos' = sigma(weight(i) * mul(pos, boneMatrix[i]))
 // nor' = sigma(weight(i) * mul(normal, boneMatrix[i]))
 // ===========================================================
-VS_OUTPUT VSLightingSkinned(VS_INPUT_SKINNED vin)
+VS_OUTPUT_SKINNED VSLightingSkinned(VS_INPUT_SKINNED vin)
 {
-    VS_OUTPUT vout;
-
-    // 1) 본 블렌딩 (로컬)
+    VS_OUTPUT_SKINNED vout;
+    
     float4 posLocal = float4(vin.position, 1.0f);
     float4 norLocal = float4(vin.normal, 0.0f);
 
@@ -101,7 +108,7 @@ VS_OUTPUT VSLightingSkinned(VS_INPUT_SKINNED vin)
     float4 skinnedNor = float4(0, 0, 0, 0);
 
     [unroll]
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 4; ++i)
     {
         uint idx = vin.boneIndex[i];
         float w = vin.boneWeight[i];
@@ -111,16 +118,15 @@ VS_OUTPUT VSLightingSkinned(VS_INPUT_SKINNED vin)
     }
 
     float3 normal = normalize(skinnedNor.xyz);
-
-    // 2) 월드/뷰/프로젝션 변환
+    
     float4 posW = mul(skinnedPos, gmtxWorld);
     float4 posV = mul(posW, gmtxView);
     float4 posP = mul(posV, gmtxProjection);
 
     vout.positionH = posP;
     vout.positionW = posW.xyz;
-    vout.normalW = mul(float4(normal, 0.0f), gmtxWorld).xyz;
     vout.normal = normal;
+    vout.normalW = mul(float4(normal, 0.0f), gmtxWorld).xyz;
     vout.uv = vin.uv;
 
     return vout;

@@ -127,18 +127,21 @@ void CGameObject::Render(ID3D12GraphicsCommandList* cmd, CCamera* pCamera)
 	if (m_pShader)
 		m_pShader->Render(cmd, pCamera);
 
-	if (m_ppMeshes)
+	for (int i = 0; i < m_nMeshes; ++i)
 	{
-		for (int i = 0; i < m_nMeshes; i++)
-		{
-			CMesh* pMesh = m_ppMeshes[i];
-			if (!pMesh) continue;
+		CMesh* pMesh = m_ppMeshes[i];
+		if (!pMesh) continue;
 
-			pMesh->Render(cmd);   // SubMesh 렌더링은 내부에서 처리
-		}
+		// 1) GameObject 상수 버퍼 (월드, 색)
+		UpdateShaderVariables(cmd, &m_xmf4x4World);
+
+		// 2) 메쉬가 스키닝이면 내부에서 자동 처리 / 아니면 자동 skip
+		pMesh->UpdateBoneConstantBuffer(cmd);
+
+		// 3) 드로우
+		pMesh->Render(cmd);
 	}
 }
-
 void CGameObject::SetSrvDescriptorInfo(ID3D12DescriptorHeap* heap, UINT inc)
 {
 	m_pd3dSrvDescriptorHeap = heap;

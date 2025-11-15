@@ -558,26 +558,27 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
     // 7) 본 개수가 1개 이상이면 스키닝 자동 활성화
     // --------------------------------------------------------------
     int nBones = (int)m_Bones.size();
-    if (nBones > 0 && m_pAnimator)
+    if (nBones > 0)
     {
-        // Animator에 스켈레톤 구조 전달
-        m_pAnimator->SetBoneCount(nBones);
-
-        for (int i = 0; i < nBones; ++i)
-        {
-            m_pAnimator->SetBoneOffsetMatrix(i, m_Bones[i].offsetMatrix);
-            m_pAnimator->SetBoneParent(i, m_Bones[i].parentIndex);
-        }
-
-        // 스키닝 활성화 (Bone CBV 생성)
+        // 1) 스키닝 리소스는 무조건 만들기
         EnableSkinning(device, cmdList, nBones);
 
-        // 스키닝 메쉬 플래그
+        // 2) Animator가 이미 붙어있다면 그때 스켈레톤 넘겨주기
+        if (m_pAnimator)
+        {
+            m_pAnimator->SetBoneCount(nBones);
+
+            for (int i = 0; i < nBones; ++i)
+            {
+                m_pAnimator->SetBoneOffsetMatrix(i, m_Bones[i].offsetMatrix);
+                m_pAnimator->SetBoneParent(i, m_Bones[i].parentIndex);
+            }
+        }
+
         m_bSkinnedMesh = true;
     }
     else
     {
-        // 스켈레톤이 없는 메쉬 → 기본 메시
         m_bSkinnedMesh = false;
     }
 
@@ -858,6 +859,22 @@ void CMesh::SetSrvDescriptorInfo(ID3D12DescriptorHeap* heap, UINT inc)
 void CMesh::SetAnimator(CAnimator* pAnimator)
 {
     m_pAnimator = pAnimator;
+
+    int nBones = (int)m_Bones.size();
+    if (m_pAnimator && nBones > 0)
+    {
+        m_pAnimator->SetBoneCount(nBones);
+        for (int i = 0; i < nBones; ++i)
+        {
+            m_pAnimator->SetBoneOffsetMatrix(i, m_Bones[i].offsetMatrix);
+            m_pAnimator->SetBoneParent(i, m_Bones[i].parentIndex);
+        }
+
+        // 혹시 아직 EnableSkinning이 안 됐다면 여기서라도
+        //if (!m_pd3dcbBoneTransforms)
+            //EnableSkinning(/*device, cmdList,*/ nBones); // 이건 시그니처에 맞게
+        m_bSkinnedMesh = true;
+    }
 }
 
 void CMesh::LoadAnimationFromFBX(const char* filename)
