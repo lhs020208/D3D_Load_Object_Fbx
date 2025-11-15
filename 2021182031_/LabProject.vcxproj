@@ -152,8 +152,10 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Animator.h" />
     <ClInclude Include="AssetManager.h" />
     <ClInclude Include="Camera.h" />
+    <ClInclude Include="CAnimator.h" />
     <ClInclude Include="d3dx12.h" />
     <ClInclude Include="GameFramework.h" />
     <ClInclude Include="LabProject.h" />
