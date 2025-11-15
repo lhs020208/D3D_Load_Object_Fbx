@@ -554,26 +554,32 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
         XMFLOAT3 e{ (mx.x - mn.x) * 0.5f, (mx.y - mn.y) * 0.5f, (mx.z - mn.z) * 0.5f };
         m_xmOOBB = BoundingOrientedBox(c, e, XMFLOAT4(0, 0, 0, 1));
     }
-
-    if (m_pAnimator)
+    // --------------------------------------------------------------
+    // 7) 본 개수가 1개 이상이면 스키닝 자동 활성화
+    // --------------------------------------------------------------
+    int nBones = (int)m_Bones.size();
+    if (nBones > 0 && m_pAnimator)
     {
-        int nBones = (int)m_Bones.size();
-
-        // 1) 본 개수 전달
+        // Animator에 스켈레톤 구조 전달
         m_pAnimator->SetBoneCount(nBones);
 
-        // 2) OffsetMatrix / ParentIndex 전달
         for (int i = 0; i < nBones; ++i)
         {
             m_pAnimator->SetBoneOffsetMatrix(i, m_Bones[i].offsetMatrix);
             m_pAnimator->SetBoneParent(i, m_Bones[i].parentIndex);
         }
-    }
 
-    // -----------------------------------------------------------------------------
-    // 7) 정적 메쉬 (스키닝 끔)
-    // -----------------------------------------------------------------------------
-    m_bSkinnedMesh = false;
+        // 스키닝 활성화 (Bone CBV 생성)
+        EnableSkinning(device, cmdList, nBones);
+
+        // 스키닝 메쉬 플래그
+        m_bSkinnedMesh = true;
+    }
+    else
+    {
+        // 스켈레톤이 없는 메쉬 → 기본 메시
+        m_bSkinnedMesh = false;
+    }
 
     // -----------------------------------------------------------------------------
     // 8) SubMesh GPU VB/IB 생성
