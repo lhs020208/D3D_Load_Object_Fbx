@@ -172,6 +172,7 @@
   <ItemGroup>
     <ClCompile Include="AssetManager.cpp" />
     <ClCompile Include="Camera.cpp" />
+    <ClCompile Include="CAnimator.cpp" />
     <ClCompile Include="GameFramework.cpp" />
     <ClCompile Include="LabProject.cpp" />
     <ClCompile Include="Mesh.cpp" />

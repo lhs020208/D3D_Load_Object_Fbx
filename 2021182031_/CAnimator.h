@@ -81,4 +81,7 @@ private:
     // 최종 계산된 본 행렬들 (Skinning용)
     // RootSignature b4에서 그대로 GPU로 보냄
     std::vector<XMFLOAT4X4> m_FinalBoneMatrices;
+
+    std::vector<XMFLOAT4X4> m_LocalPose;
+    std::vector<XMFLOAT4X4> m_GlobalPose;
 };
