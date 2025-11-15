@@ -394,6 +394,140 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
 
         m_SubMeshes.push_back(sm);
     }
+    // ==========================================================================
+    // 9) 각 SubMesh에 대해 BoneIndex / BoneWeight 세팅
+    //    (정점은 Triangle 순서대로 push_back 된 상태)
+    // ==========================================================================
+    for (size_t meshIdx = 0; meshIdx < meshes.size(); ++meshIdx)
+    {
+        FbxMesh* mesh = meshes[meshIdx];
+        if (!mesh) continue;
+
+        SubMesh& sm = m_SubMeshes[meshIdx];
+
+        int vertexCount = (int)sm.positions.size();
+        if (vertexCount == 0) continue;
+
+        // 정점별 임시 저장: Bone influence 리스트
+        struct Influence { int bone; float weight; };
+        std::vector<std::vector<Influence>> vertexInfluences(vertexCount);
+
+        // ----- 스킨 데이터 읽기 -----
+        int skinCount = mesh->GetDeformerCount(FbxDeformer::eSkin);
+        if (skinCount <= 0) continue;
+
+        for (int si = 0; si < skinCount; ++si)
+        {
+            FbxSkin* skin = (FbxSkin*)mesh->GetDeformer(si, FbxDeformer::eSkin);
+            if (!skin) continue;
+
+            int clusterCount = skin->GetClusterCount();
+            for (int ci = 0; ci < clusterCount; ++ci)
+            {
+                FbxCluster* cluster = skin->GetCluster(ci);
+                if (!cluster) continue;
+
+                FbxNode* linkNode = cluster->GetLink();
+                if (!linkNode) continue;
+
+                // bone index 찾기
+                int boneIndex = -1;
+                auto it = m_BoneNameToIndex.find(linkNode->GetName());
+                if (it != m_BoneNameToIndex.end())
+                    boneIndex = it->second;
+
+                if (boneIndex < 0) continue;
+
+                // cluster가 영향 주는 control point 목록
+                int indexCount = cluster->GetControlPointIndicesCount();
+                int* cpIndices = cluster->GetControlPointIndices();
+                double* cpWeights = cluster->GetControlPointWeights();
+
+                if (!cpIndices || !cpWeights) continue;
+
+                // 이 FBX mesh의 정점 push-back 방식과 맞추기 위해
+                // polygon -> cpIndex -> localVertexIndex 매핑 필요
+                // 우리는 vertex push 순서대로 매핑 테이블을 생성할 수 있다.
+
+                // [1] ControlPoint → SubMesh vertexIndex 매핑 테이블 생성
+                //     (한 번만 만들도록 static 캐시해도 됨)
+                static thread_local std::vector<std::vector<int>> cpToVertex;
+                cpToVertex.clear();
+                cpToVertex.resize(mesh->GetControlPointsCount());
+
+                int polyCount = mesh->GetPolygonCount();
+                int vtxCounter = 0;
+                for (int p = 0; p < polyCount; ++p)
+                {
+                    for (int v = 0; v < 3; ++v)
+                    {
+                        int cpIdx = mesh->GetPolygonVertex(p, v);
+                        if (cpIdx >= 0 && cpIdx < (int)cpToVertex.size())
+                            cpToVertex[cpIdx].push_back(vtxCounter);
+                        vtxCounter++;
+                    }
+                }
+
+                // [2] cluster의 CP → 해당 SubMesh vertex에 weight 반영
+                for (int k = 0; k < indexCount; ++k)
+                {
+                    int cpIdx = cpIndices[k];
+                    float w = (float)cpWeights[k];
+
+                    if (cpIdx < 0 || cpIdx >= (int)cpToVertex.size()) continue;
+
+                    for (int vi : cpToVertex[cpIdx])
+                    {
+                        if (vi >= 0 && vi < vertexCount)
+                        {
+                            vertexInfluences[vi].push_back({ boneIndex, w });
+                        }
+                    }
+                }
+            }
+        }
+
+        // ----- influence 정렬 + 상위 4개만 남기기 + 정규화 -----
+        for (int i = 0; i < vertexCount; ++i)
+        {
+            auto& inf = vertexInfluences[i];
+
+            if (inf.empty())
+            {
+                // 영향이 없으면 bone0 = weight1
+                sm.boneIndices[i] = XMUINT4(0, 0, 0, 0);
+                sm.boneWeights[i] = XMFLOAT4(1, 0, 0, 0);
+                continue;
+            }
+
+            // weight 큰 순 정렬
+            std::sort(inf.begin(), inf.end(), [](const Influence& a, const Influence& b) {
+                return a.weight > b.weight;
+                });
+
+            // 최대 4개만 사용
+            if (inf.size() > 4) inf.resize(4);
+
+            // 정규화
+            float total = 0;
+            for (auto& x : inf) total += x.weight;
+            if (total < 1e-8f) total = 1.0f;
+            float inv = 1.0f / total;
+
+            // sm.boneIndices / sm.boneWeights 채우기
+            XMUINT4 idx(0, 0, 0, 0);
+            XMFLOAT4 w(0, 0, 0, 0);
+
+            for (size_t k = 0; k < inf.size(); ++k)
+            {
+                (&idx.x)[k] = inf[k].bone;
+                (&w.x)[k] = inf[k].weight * inv;
+            }
+
+            sm.boneIndices[i] = idx;
+            sm.boneWeights[i] = w;
+        }
+    }
 
     // -----------------------------------------------------------------------------
     // 6) 원래 OBB 계산 기능 유지
