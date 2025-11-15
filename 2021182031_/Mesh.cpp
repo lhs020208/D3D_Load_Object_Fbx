@@ -616,13 +616,59 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
     mgr->Destroy();
 }
 
-void CMesh::EnableSkinning(int nBones)
+void CMesh::EnableSkinning(ID3D12Device* device,  ID3D12GraphicsCommandList* cmdList, int nBones)
 {
-	m_bSkinnedMesh = true;
-	m_pxmf4x4BoneTransforms = new XMFLOAT4X4[nBones];
-	for (int i = 0; i < nBones; ++i)
-		XMStoreFloat4x4(&m_pxmf4x4BoneTransforms[i], XMMatrixIdentity());
+    // 스키닝 활성화
+    m_bSkinnedMesh = true;
+
+    // ===============================
+    // 1) CPU 배열 할당
+    // ===============================
+    // 기존 것이 있으면 해제
+    if (m_pxmf4x4BoneTransforms)
+    {
+        delete[] m_pxmf4x4BoneTransforms;
+        m_pxmf4x4BoneTransforms = nullptr;
+    }
+
+    m_pxmf4x4BoneTransforms = new XMFLOAT4X4[nBones];
+    for (int i = 0; i < nBones; ++i)
+        XMStoreFloat4x4(&m_pxmf4x4BoneTransforms[i], XMMatrixIdentity());
+
+    // ===============================
+    // 2) GPU CBV (b4) 생성
+    // ===============================
+    if (m_pd3dcbBoneTransforms)
+    {
+        m_pd3dcbBoneTransforms->Release();
+        m_pd3dcbBoneTransforms = nullptr;
+    }
+
+    UINT bufferSize = sizeof(XMFLOAT4X4) * nBones;
+
+    // 상수 버퍼는 256byte alignment 필요
+    UINT alignedSize = (bufferSize + 255) & ~255;
+
+    device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(alignedSize),
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&m_pd3dcbBoneTransforms)
+    );
+
+    // 첫 프레임용 초기 업로드
+    {
+        void* mapped = nullptr;
+        m_pd3dcbBoneTransforms->Map(0, nullptr, &mapped);
+
+        memcpy(mapped, m_pxmf4x4BoneTransforms, bufferSize);
+
+        m_pd3dcbBoneTransforms->Unmap(0, nullptr);
+    }
 }
+
 
 
 void CMesh::SetPolygon(int nIndex, CPolygon* pPolygon)
