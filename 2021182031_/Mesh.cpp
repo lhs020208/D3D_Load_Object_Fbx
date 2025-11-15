@@ -1061,3 +1061,43 @@ void CMesh::LoadAnimationFromFBX(const char* filename)
     // =============================
     mgr->Destroy();
 }
+
+void CMesh::UpdateBoneConstantBuffer(ID3D12GraphicsCommandList* pCommandList)
+{
+    // 스키닝 안 하면 아무것도 하지 않음
+    if (!m_bSkinnedMesh || !m_pAnimator) return;
+    if (!m_pxmf4x4BoneTransforms || !m_pd3dcbBoneTransforms) return;
+
+    const auto& finalMats = m_pAnimator->GetFinalBoneMatrices();
+    int nBones = (int)finalMats.size();
+    if (nBones <= 0) return;
+
+    // -------------------------------------------------------------------
+    // 1) CPU 배열(m_pxmf4x4BoneTransforms)에 Animator 결과 복사
+    // -------------------------------------------------------------------
+    for (int i = 0; i < nBones; ++i)
+        m_pxmf4x4BoneTransforms[i] = finalMats[i];
+
+    // -------------------------------------------------------------------
+    // 2) GPU CBV(b4) 에 업로드 (Map → memcpy → Unmap)
+    // -------------------------------------------------------------------
+    XMFLOAT4X4* pMapped = nullptr;
+
+    D3D12_RANGE readRange = { 0, 0 }; // CPU write only
+    HRESULT hr = m_pd3dcbBoneTransforms->Map(0, &readRange, (void**)&pMapped);
+    if (FAILED(hr) || !pMapped) return;
+
+    memcpy(pMapped,
+        m_pxmf4x4BoneTransforms,
+        sizeof(XMFLOAT4X4) * nBones);
+
+    m_pd3dcbBoneTransforms->Unmap(0, nullptr);
+
+    // -------------------------------------------------------------------
+    // 3) 루트 시그니처 b4 에 바인딩
+    // -------------------------------------------------------------------
+    pCommandList->SetGraphicsRootConstantBufferView(
+        4,
+        m_pd3dcbBoneTransforms->GetGPUVirtualAddress()
+    );
+}

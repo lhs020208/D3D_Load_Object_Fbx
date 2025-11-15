@@ -182,4 +182,6 @@ public:
 	// Animator 결과를 GPU CBV로 업로드
 	void UpdateBoneTransforms(ID3D12GraphicsCommandList* cmd);
 	void LoadAnimationFromFBX(const char* filename);
+
+	void UpdateBoneConstantBuffer(ID3D12GraphicsCommandList* pCommandList);
 };
