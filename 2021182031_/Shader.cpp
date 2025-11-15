@@ -243,28 +243,30 @@ D3D12_SHADER_BYTECODE CLightingShader::CreatePixelShader(ID3DBlob **ppd3dShaderB
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 D3D12_INPUT_LAYOUT_DESC CSkinnedLightingShader::CreateInputLayout()
 {
-	// POSITION(12) + NORMAL(12) + UV(8) + BI(16) + BW(16) = 64 bytes
-	D3D12_INPUT_ELEMENT_DESC* d = new D3D12_INPUT_ELEMENT_DESC[5];
+	static D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+	{
+		{ "POSITION",      0, DXGI_FORMAT_R32G32B32_FLOAT,   0, 0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "NORMAL",        0, DXGI_FORMAT_R32G32B32_FLOAT,   0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXTURECOORD",  0, DXGI_FORMAT_R32G32_FLOAT,      0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 
-	d[0] = { "POSITION",     0, DXGI_FORMAT_R32G32B32_FLOAT,      0,  0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
-	d[1] = { "NORMAL",       0, DXGI_FORMAT_R32G32B32_FLOAT,      0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
-	d[2] = { "TEXTURECOORD", 0, DXGI_FORMAT_R32G32_FLOAT,         0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
-	d[3] = { "BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_UINT,    0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
-	d[4] = { "BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT,   0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 };
+		// 스키닝 데이터
+		{ "BLENDINDICES",  0, DXGI_FORMAT_R32G32B32A32_UINT,   0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "BLENDWEIGHT",   0, DXGI_FORMAT_R32G32B32A32_FLOAT,  0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	};
 
-	D3D12_INPUT_LAYOUT_DESC desc{};
-	desc.pInputElementDescs = d;
-	desc.NumElements = 5;
-	return desc;
+	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc;
+	inputLayoutDesc.pInputElementDescs = inputElementDescs;
+	inputLayoutDesc.NumElements = _countof(inputElementDescs);
+	return inputLayoutDesc;
 }
 
-D3D12_SHADER_BYTECODE CSkinnedLightingShader::CreateVertexShader(ID3DBlob** pp)
+D3D12_SHADER_BYTECODE CSkinnedLightingShader::CreateVertexShader(ID3DBlob** ppd3dShaderBlob)
 {
-	// VSLightingSkinned 사용
-	return CShader::CompileShaderFromFile(L"Shaders.hlsl", "VSLightingSkinned", "vs_5_1", pp);
+	return CompileShaderFromFile(L"Shaders.hlsl", "VSLightingSkinned", "vs_5_1", ppd3dShaderBlob);
 }
 
-D3D12_SHADER_BYTECODE CSkinnedLightingShader::CreatePixelShader(ID3DBlob** pp)
+
+D3D12_SHADER_BYTECODE CSkinnedLightingShader::CreatePixelShader(ID3DBlob** ppd3dShaderBlob)
 {
-	return CShader::CompileShaderFromFile(L"Shaders.hlsl", "PSLighting", "ps_5_1", pp);
+	return CompileShaderFromFile(L"Shaders.hlsl", "PSLighting", "ps_5_1", ppd3dShaderBlob);
 }
