@@ -860,28 +860,6 @@ void CMesh::SetAnimator(CAnimator* pAnimator)
     m_pAnimator = pAnimator;
 }
 
-void CMesh::UpdateBoneTransforms(ID3D12GraphicsCommandList* cmd)
-{
-    if (!m_pAnimator || !m_bSkinnedMesh) return;
-
-    const auto& finalMats = m_pAnimator->GetFinalBoneMatrices();
-    int boneCount = (int)finalMats.size();
-
-    // CPU-side m_pxmf4x4BoneTransforms 에 복사
-    for (int i = 0; i < boneCount; ++i)
-        m_pxmf4x4BoneTransforms[i] = finalMats[i];
-
-    // GPU CBV에 업로드
-    void* mapped = nullptr;
-    m_pd3dcbBoneTransforms->Map(0, nullptr, &mapped);
-    memcpy(mapped, m_pxmf4x4BoneTransforms, sizeof(XMFLOAT4X4) * boneCount);
-    m_pd3dcbBoneTransforms->Unmap(0, nullptr);
-
-    // RootSignature slot 4 → BoneMatrix CBV 바인딩
-    cmd->SetGraphicsRootConstantBufferView(4,
-        m_pd3dcbBoneTransforms->GetGPUVirtualAddress());
-}
-
 void CMesh::LoadAnimationFromFBX(const char* filename)
 {
     if (!m_pAnimator)
