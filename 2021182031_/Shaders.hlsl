@@ -28,12 +28,11 @@ cbuffer cbLightInfo : register(b3)
     float gf3LightColorX;
     float gf3LightColorY;
     float gf3LightColorZ;
-}
+};
 
-static const uint MAX_BONES = 256;
 cbuffer cbBones : register(b4)
 {
-    float4x4 gBoneTransforms[MAX_BONES];
+    float4x4 gBones[256];
 };
 
 Texture2D gDiffuseMap : register(t0);
@@ -42,18 +41,17 @@ SamplerState gSampler : register(s0);
 struct VS_INPUT
 {
     float3 position : POSITION;
-    float3 normal   : NORMAL;
-    float2 uv       : TEXTURECOORD;
+    float3 normal : NORMAL;
+    float2 uv : TEXCOORD0;
 };
-
 
 struct VS_INPUT_SKINNED
 {
     float3 position : POSITION;
     float3 normal : NORMAL;
-    float2 uv : TEXTURECOORD;
-    uint4 bi : BLENDINDICES;
-    float4 bw : BLENDWEIGHT;
+    float2 uv : TEXCOORD0;
+    uint4 boneIndex : BLENDINDICES;
+    float4 boneWeight : BLENDWEIGHT;
 };
 
 struct VS_OUTPUT
@@ -64,6 +62,7 @@ struct VS_OUTPUT
     float3 normalW : NORMAL1;
     float2 uv : TEXCOORD0;
 };
+
 float4 VSPseudoLighting(float4 position : POSITION) : SV_POSITION
 {
     return position;
@@ -85,22 +84,48 @@ VS_OUTPUT VSLighting(VS_INPUT input)
     return output;
 }
 
-VS_OUTPUT VSLightingSkinned(VS_INPUT_SKINNED input)
+// ===========================================================
+// Skinned Vertex Shader
+// pos' = sigma(weight(i) * mul(pos, boneMatrix[i]))
+// nor' = sigma(weight(i) * mul(normal, boneMatrix[i]))
+// ===========================================================
+VS_OUTPUT VSLightingSkinned(VS_INPUT_SKINNED vin)
 {
-    VS_OUTPUT output;
-    
-    float4 posW = mul(float4(input.position, 1.0f), gmtxWorld);
-    output.positionW = posW.xyz;
-    output.positionH = mul(mul(float4(output.positionW, 1.0f), gmtxView), gmtxProjection);
+    VS_OUTPUT vout;
 
-    output.normalW = mul(float4(input.normal, 0.0f), gmtxWorld).xyz;
-    output.normal = input.normal;
-    
-    output.uv = float2(0.0f, 0.0f);
-    output.uv = input.uv;
+    // 1) 본 블렌딩 (로컬)
+    float4 posLocal = float4(vin.position, 1.0f);
+    float4 norLocal = float4(vin.normal, 0.0f);
 
-    return output;
+    float4 skinnedPos = float4(0, 0, 0, 0);
+    float4 skinnedNor = float4(0, 0, 0, 0);
+
+    [unroll]
+    for (int i = 0; i < 4; i++)
+    {
+        uint idx = vin.boneIndex[i];
+        float w = vin.boneWeight[i];
+
+        skinnedPos += w * mul(posLocal, gBones[idx]);
+        skinnedNor += w * mul(norLocal, gBones[idx]);
+    }
+
+    float3 normal = normalize(skinnedNor.xyz);
+
+    // 2) 월드/뷰/프로젝션 변환
+    float4 posW = mul(skinnedPos, gmtxWorld);
+    float4 posV = mul(posW, gmtxView);
+    float4 posP = mul(posV, gmtxProjection);
+
+    vout.positionH = posP;
+    vout.positionW = posW.xyz;
+    vout.normalW = mul(float4(normal, 0.0f), gmtxWorld).xyz;
+    vout.normal = normal;
+    vout.uv = vin.uv;
+
+    return vout;
 }
+
 
 static float3 gf3AmbientLightColor = float3(1.0f, 1.0f, 1.0f);
 static float3 gf3AmbientSpecularColor = float3(1.0f, 1.0f, 1.0f);
