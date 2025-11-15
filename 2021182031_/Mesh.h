@@ -85,7 +85,6 @@ struct SubMesh
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//class CAnimator;
 class CMesh
 {
 public:
@@ -109,46 +108,11 @@ public:
 	BoundingBox						m_xmBoundingBox;
 	BoundingOrientedBox			    m_xmOOBB = BoundingOrientedBox();
 
-	// ----------------------
-	// Texture (SRV) 관련 멤버
-	// ----------------------
-	//ID3D12Resource					*m_pd3dTexture = nullptr;
-	//ID3D12Resource					*m_pd3dTextureUploadBuffer = nullptr;
-	// 이 Mesh의 텍스처가 DescriptorHeap(SRV Heap)에서 점유하는 슬롯 번호
-	//UINT							m_nTextureDescriptorIndex = UINT_MAX;
-
 protected:
 	UINT							m_nVertices = 0;
-	//XMFLOAT3						*m_pxmf3Positions = NULL;
-	//ID3D12Resource					*m_pd3dPositionBuffer = NULL;
-	//ID3D12Resource					*m_pd3dPositionUploadBuffer = NULL;
-
-	//XMFLOAT3						*m_pxmf3Normals = NULL;
-	//ID3D12Resource					*m_pd3dNormalBuffer = NULL;
-	//ID3D12Resource					*m_pd3dNormalUploadBuffer = NULL;
-
-	//XMFLOAT2						*m_pxmf2TextureCoords = NULL;
-	//ID3D12Resource					*m_pd3dTextureCoordBuffer = NULL;
-	//ID3D12Resource					*m_pd3dTextureCoordUploadBuffer = NULL;
-
-	//UINT							m_nIndices = 0;
-	//UINT							*m_pnIndices = NULL;
-	//ID3D12Resource					*m_pd3dIndexBuffer = NULL;
-	//ID3D12Resource					*m_pd3dIndexUploadBuffer = NULL;
-
-	//UINT							m_nVertexBufferViews = 0;
-	//D3D12_VERTEX_BUFFER_VIEW		*m_pd3dVertexBufferViews = NULL;
-	//D3D12_VERTEX_BUFFER_VIEW		m_d3dVertexBufferView;
-
-	//D3D12_INDEX_BUFFER_VIEW			m_d3dIndexBufferView;
 
 	D3D12_PRIMITIVE_TOPOLOGY		m_d3dPrimitiveTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	UINT							m_nSlot = 0;
-	//UINT							m_nStride = 0;
-	//UINT							m_nOffset = 0;
-
-	//UINT							m_nStartIndex = 0;
-	//int								m_nBaseVertex = 0;
 
     int							    m_nPolygons = 0;
     CPolygon                        **m_ppPolygons = NULL;

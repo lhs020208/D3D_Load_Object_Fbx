@@ -54,42 +54,10 @@ CMesh::CMesh(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandLis
 		if (FileType == 1) LoadMeshFromOBJ(pd3dDevice, pd3dCommandList, pstrFileName);
 		if (FileType == 2) LoadMeshFromFBX(pd3dDevice, pd3dCommandList, pstrFileName);
 	}
-    //m_pd3dTexture = nullptr;
-    //m_pd3dTextureUploadBuffer = nullptr;
-    //m_nTextureDescriptorIndex = UINT_MAX;
 }
 
 CMesh::~CMesh()
 {
-    /*
-    // ---- Texture Release ----
-    if (m_pd3dTexture) {
-        m_pd3dTexture->Release();
-        m_pd3dTexture = nullptr;
-    }
-    if (m_pd3dTextureUploadBuffer) {
-        m_pd3dTextureUploadBuffer->Release();
-        m_pd3dTextureUploadBuffer = nullptr;
-    }
-
-    // 만약 DescriptorIndex는 Heap에서 자동 소멸되므로 따로 해제 없음
-    m_nTextureDescriptorIndex = UINT_MAX;
-    */
-
-    // ---- 기존 Mesh 리소스 해제 ----
-    //if (m_pxmf3Positions) delete[] m_pxmf3Positions;
-    //if (m_pxmf3Normals)   delete[] m_pxmf3Normals;
-    //if (m_pxmf2TextureCoords) delete[] m_pxmf2TextureCoords;
-
-    //if (m_pnIndices) delete[] m_pnIndices;
-
-    //if (m_pd3dVertexBufferViews) delete[] m_pd3dVertexBufferViews;
-
-    //if (m_pd3dPositionBuffer) m_pd3dPositionBuffer->Release();
-    //if (m_pd3dNormalBuffer) m_pd3dNormalBuffer->Release();
-    //if (m_pd3dTextureCoordBuffer) m_pd3dTextureCoordBuffer->Release();
-    //if (m_pd3dIndexBuffer) m_pd3dIndexBuffer->Release();
-
     if (m_pd3dBoneIndexBuffer) m_pd3dBoneIndexBuffer->Release();
     if (m_pd3dBoneWeightBuffer) m_pd3dBoneWeightBuffer->Release();
     if (m_pd3dcbBoneTransforms) m_pd3dcbBoneTransforms->Release();
@@ -109,17 +77,9 @@ CMesh::~CMesh()
 
 void CMesh::ReleaseUploadBuffers() 
 {
-	//if (m_pd3dPositionUploadBuffer) m_pd3dPositionUploadBuffer->Release();
-	//if (m_pd3dNormalUploadBuffer) m_pd3dNormalUploadBuffer->Release();
-	//if (m_pd3dTextureCoordUploadBuffer) m_pd3dTextureCoordUploadBuffer->Release();
-	//if (m_pd3dIndexUploadBuffer) m_pd3dIndexUploadBuffer->Release();
 	if (m_pd3dBoneIndexUploadBuffer) m_pd3dBoneIndexUploadBuffer->Release();
 	if (m_pd3dBoneWeightUploadBuffer) m_pd3dBoneWeightUploadBuffer->Release();
 
-	//m_pd3dPositionUploadBuffer = NULL;
-	//m_pd3dNormalUploadBuffer = NULL;
-	//m_pd3dTextureCoordUploadBuffer = NULL;
-	//m_pd3dIndexUploadBuffer = NULL;
 	m_pd3dBoneIndexUploadBuffer = NULL;
 	m_pd3dBoneWeightUploadBuffer = NULL;
 };
@@ -166,128 +126,7 @@ void CMesh::Render(ID3D12GraphicsCommandList* cmd)
 
 void CMesh::LoadMeshFromOBJ(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, char* filename)
 {
-    /*
-	std::ifstream file(filename);
-	if (!file.is_open()) return;
-
-	std::vector<XMFLOAT3> positions;
-	std::vector<XMFLOAT3> normals;
-	struct Vertex { XMFLOAT3 pos; XMFLOAT3 normal; };
-	std::vector<Vertex> vertices;
-	std::vector<UINT> indices;
-
-	std::string line;
-	while (std::getline(file, line)) {
-		std::istringstream iss(line);
-		std::string prefix;
-		iss >> prefix;
-
-		if (prefix == "v") {
-			float x, y, z;
-			iss >> x >> y >> z;
-			positions.emplace_back(x, y, z);
-		}
-		else if (prefix == "vn") {
-			float x, y, z;
-			iss >> x >> y >> z;
-			normals.emplace_back(x, y, z);
-		}
-		else if (prefix == "f") {
-			for (int i = 0; i < 3; ++i) {
-				std::string token;
-				iss >> token;
-				std::istringstream tokenStream(token);
-				std::string vIdx, vtIdx, vnIdx;
-				std::getline(tokenStream, vIdx, '/');
-				std::getline(tokenStream, vtIdx, '/');
-				std::getline(tokenStream, vnIdx, '/');
-
-				int v = std::stoi(vIdx) - 1;
-				int vn = vnIdx.empty() ? -1 : (std::stoi(vnIdx) - 1);
-
-				Vertex vert;
-				vert.pos = positions[v];
-				vert.normal = (vn >= 0) ? normals[vn] : XMFLOAT3(0, 1, 0); // 기본 normal
-
-				// 중복 제거 없이 매 face마다 새로 추가
-				vertices.push_back(vert);
-				indices.push_back(static_cast<UINT>(vertices.size() - 1));
-			}
-		}
-	}
-	file.close();
-
-	m_nVertices = static_cast<UINT>(vertices.size());
-	m_nIndices = static_cast<UINT>(indices.size());
-
-	// 정점 데이터 저장 (위치 + 노멀)
-	struct VertexBufferData { XMFLOAT3 pos; XMFLOAT3 normal; };
-	VertexBufferData* vbData = new VertexBufferData[m_nVertices];
-	for (UINT i = 0; i < m_nVertices; ++i) {
-		vbData[i].pos = vertices[i].pos;
-		vbData[i].normal = vertices[i].normal;
-	}
-
-	// 기존 m_pxmf3Positions만 유지 필요 시 (아래와 같이 위치만 복사)
-	if (m_pxmf3Positions) delete[] m_pxmf3Positions;
-	m_pxmf3Positions = new XMFLOAT3[m_nVertices];
-	for (UINT i = 0; i < m_nVertices; ++i) m_pxmf3Positions[i] = vertices[i].pos;
-
-	if (m_pxmf3Normals) delete[] m_pxmf3Normals;
-	m_pxmf3Normals = new XMFLOAT3[m_nVertices];
-	for (UINT i = 0; i < m_nVertices; ++i) m_pxmf3Normals[i] = vertices[i].normal;
-
-	if (m_pnIndices) delete[] m_pnIndices;
-	m_pnIndices = new UINT[m_nIndices];
-	memcpy(m_pnIndices, indices.data(), sizeof(UINT) * m_nIndices);
-
-	// ===== GPU 리소스 생성 =====
-	UINT vbSize = sizeof(VertexBufferData) * m_nVertices;
-	m_pd3dPositionBuffer = CreateBufferResource(device, cmdList, vbData, vbSize,
-		D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, &m_pd3dPositionUploadBuffer);
-
-	m_nVertexBufferViews = 1;
-	m_pd3dVertexBufferViews = new D3D12_VERTEX_BUFFER_VIEW[1];
-	m_pd3dVertexBufferViews[0].BufferLocation = m_pd3dPositionBuffer->GetGPUVirtualAddress();
-	m_pd3dVertexBufferViews[0].StrideInBytes = sizeof(VertexBufferData);
-	m_pd3dVertexBufferViews[0].SizeInBytes = vbSize;
-
-	// 인덱스 버퍼
-	UINT ibSize = sizeof(UINT) * m_nIndices;
-	m_pd3dIndexBuffer = CreateBufferResource(device, cmdList, m_pnIndices, ibSize,
-		D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_INDEX_BUFFER, &m_pd3dIndexUploadBuffer);
-
-	m_d3dIndexBufferView.BufferLocation = m_pd3dIndexBuffer->GetGPUVirtualAddress();
-	m_d3dIndexBufferView.Format = DXGI_FORMAT_R32_UINT;
-	m_d3dIndexBufferView.SizeInBytes = ibSize;
-
-	// OBB 계산은 위치 정보만 사용 (원본 유지)
-	XMFLOAT3 min = positions[0], max = positions[0];
-	for (const auto& v : positions) {
-		if (v.x < min.x) min.x = v.x;
-		if (v.y < min.y) min.y = v.y;
-		if (v.z < min.z) min.z = v.z;
-
-		if (v.x > max.x) max.x = v.x;
-		if (v.y > max.y) max.y = v.y;
-		if (v.z > max.z) max.z = v.z;
-	}
-
-	XMFLOAT3 center = {
-		(min.x + max.x) * 0.5f,
-		(min.y + max.y) * 0.5f,
-		(min.z + max.z) * 0.5f
-	};
-	XMFLOAT3 extent = {
-		(max.x - min.x) * 0.5f,
-		(max.y - min.y) * 0.5f,
-		(max.z - min.z) * 0.5f
-	};
-
-	m_xmOOBB = BoundingOrientedBox(center, extent, XMFLOAT4(0, 0, 0, 1));
-
-	delete[] vbData;
-    */
+    NULL;
 }
 void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const char* filename)
 {
@@ -622,146 +461,6 @@ BOOL CMesh::RayIntersectionByTriangle(XMVECTOR& xmRayOrigin, XMVECTOR& xmRayDire
 
 	return(bIntersected);
 }
-/*
-void CMesh::LoadTextureFromFile(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList,
-    ID3D12DescriptorHeap* srvHeap, UINT descriptorIndex, const wchar_t* fileName)
-{
-    // ============================
-    // 0) Release old resources
-    // ============================
-    if (m_pd3dTexture) { m_pd3dTexture->Release(); m_pd3dTexture = nullptr; }
-    if (m_pd3dTextureUploadBuffer) { m_pd3dTextureUploadBuffer->Release(); m_pd3dTextureUploadBuffer = nullptr; }
-
-    // ============================
-    // 1) WIC Factory 만들기
-    // ============================
-    IWICImagingFactory* wicFactory = nullptr;
-    CoCreateInstance(
-        CLSID_WICImagingFactory,
-        nullptr,
-        CLSCTX_INPROC_SERVER,
-        IID_PPV_ARGS(&wicFactory));
-
-    // ============================
-    // 2) PNG 파일 디코더 생성
-    // ============================
-    IWICBitmapDecoder* decoder = nullptr;
-    wicFactory->CreateDecoderFromFilename(
-        fileName,
-        nullptr,
-        GENERIC_READ,
-        WICDecodeMetadataCacheOnLoad,
-        &decoder);
-
-    // ============================
-    // 3) 첫 번째 프레임 읽기
-    // ============================
-    IWICBitmapFrameDecode* frame = nullptr;
-    decoder->GetFrame(0, &frame);
-
-    UINT width = 0, height = 0;
-    frame->GetSize(&width, &height);
-
-    // ============================
-    // 4) RGBA 32bit 포맷으로 변환
-    // ============================
-    IWICFormatConverter* converter = nullptr;
-    wicFactory->CreateFormatConverter(&converter);
-
-    converter->Initialize(
-        frame,
-        GUID_WICPixelFormat32bppRGBA,
-        WICBitmapDitherTypeNone,
-        nullptr,
-        0.0,
-        WICBitmapPaletteTypeCustom);
-
-    // CPU 메모리 버퍼에 RGBA 데이터 복사
-    UINT stride = width * 4;               // 4byte per pixel
-    UINT imageSize = stride * height;
-    std::unique_ptr<BYTE[]> pixels(new BYTE[imageSize]);
-    converter->CopyPixels(nullptr, stride, imageSize, pixels.get());
-
-    // ============================
-    // 5) D3D12 Texture Resource 생성
-    // ============================
-    D3D12_RESOURCE_DESC texDesc = {};
-    texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    texDesc.Width = width;
-    texDesc.Height = height;
-    texDesc.DepthOrArraySize = 1;
-    texDesc.MipLevels = 1;
-    texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    texDesc.SampleDesc.Count = 1;
-    texDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-
-    device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-        D3D12_HEAP_FLAG_NONE,
-        &texDesc,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        nullptr,
-        IID_PPV_ARGS(&m_pd3dTexture));
-
-    // ============================
-    // 6) 업로드 버퍼 생성
-    // ============================
-    UINT64 uploadBufferSize = GetRequiredIntermediateSize(m_pd3dTexture, 0, 1);
-
-    device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(&m_pd3dTextureUploadBuffer));
-
-    // ============================
-    // 7) GPU로 텍스처 데이터 복사
-    // ============================
-    D3D12_SUBRESOURCE_DATA subresource = {};
-    subresource.pData = pixels.get();
-    subresource.RowPitch = stride;
-    subresource.SlicePitch = imageSize;
-
-    UpdateSubresources(
-        cmdList,
-        m_pd3dTexture,
-        m_pd3dTextureUploadBuffer,
-        0, 0, 1,
-        &subresource);
-
-    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-        m_pd3dTexture,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
-
-    // ============================
-    // 8) SRV 생성
-    // ============================
-    m_nTextureDescriptorIndex = descriptorIndex;
-
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MipLevels = 1;
-
-    UINT increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    CD3DX12_CPU_DESCRIPTOR_HANDLE hCPU(srvHeap->GetCPUDescriptorHandleForHeapStart());
-    hCPU.Offset(descriptorIndex, increment);
-
-    device->CreateShaderResourceView(m_pd3dTexture, &srvDesc, hCPU);
-
-    // ============================
-    // 정리
-    // ============================
-    frame->Release();
-    decoder->Release();
-    converter->Release();
-    wicFactory->Release();
-}
-*/
 
 void CMesh::LoadTextureFromFile(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList,
     ID3D12DescriptorHeap* srvHeap, UINT descriptorIndex, const wchar_t* fileName, int subMeshIndex)
