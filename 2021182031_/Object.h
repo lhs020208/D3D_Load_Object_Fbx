@@ -73,28 +73,3 @@ public:
 
 	void SetSrvDescriptorInfo(ID3D12DescriptorHeap* heap, UINT inc);
 };
-
-class CCubeObject : public CGameObject
-{
-public:
-
-	virtual void Animate(float fElapsedTime) override;
-	virtual void Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera) override;
-
-};
-
-class CTankObject : public CGameObject
-{
-public:
-
-	virtual void Animate(float fElapsedTime) override;
-	virtual void Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera) override;
-	virtual void ReleaseUploadBuffers() override;
-
-	XMFLOAT4X4 m_pxmf4x4Transforms[EXPLOSION_DEBRISES];
-	XMFLOAT3 m_pxmf3SphereVectors[EXPLOSION_DEBRISES];
-private:
-	float m_fElapsedTimes = 0.0f;
-	float m_fDuration = 2.0f;
-	int timer = 0;
-};

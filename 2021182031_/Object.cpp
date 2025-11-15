@@ -72,6 +72,27 @@ void CGameObject::SetShader(CShader *pShader)
 
 void CGameObject::Animate(float fTimeElapsed)
 {
+	// Mesh 없는 오브젝트는 애니메이션 없음
+	if (!m_ppMeshes) return;
+
+	for (int i = 0; i < m_nMeshes; i++)
+	{
+		CMesh* pMesh = m_ppMeshes[i];
+		if (!pMesh) continue;
+
+		// Animator 없는 메쉬는 애니메이션 없음
+		CAnimator* animator = pMesh->GetAnimator();
+		if (!animator) continue;
+
+		// 본이 없으면 스켈레톤 애니메이션이 아님
+		if (animator->GetBoneCount() <= 0) continue;
+
+		// 실제 애니메이션 프레임 진행
+		animator->Update(fTimeElapsed);
+	}
+
+	// 애니메이션 후 바운딩 박스 갱신
+	UpdateBoundingBox();
 }
 
 void CGameObject::CreateShaderVariables(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList* pd3dCommandList)
@@ -279,43 +300,4 @@ void CGameObject::SetRotationTransform(XMFLOAT4X4* pmxf4x4Transform)
 	m_xmf4x4World._11 = pmxf4x4Transform->_11; m_xmf4x4World._12 = pmxf4x4Transform->_12; m_xmf4x4World._13 = pmxf4x4Transform->_13;
 	m_xmf4x4World._21 = pmxf4x4Transform->_21; m_xmf4x4World._22 = pmxf4x4Transform->_22; m_xmf4x4World._23 = pmxf4x4Transform->_23;
 	m_xmf4x4World._31 = pmxf4x4Transform->_31; m_xmf4x4World._32 = pmxf4x4Transform->_32; m_xmf4x4World._33 = pmxf4x4Transform->_33;
-}
-
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void CCubeObject::Animate(float fElapsedTime)
-{
-}
-void CCubeObject::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera)
-{
-	CGameObject::Render(pd3dCommandList, pCamera);
-}
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void CTankObject::Animate(float fElapsedTime)
-{
-
-	int forward_Step = 100;
-	if (timer < forward_Step)
-		SetPosition(Vector3::Add(GetPosition(), Vector3::ScalarProduct(GetLook(), fElapsedTime * 0.5f * 5, false)));
-	if (timer >= forward_Step && timer < forward_Step + 30)
-		Rotate(0.0f, 6.0f, 0.0f);
-	if (timer >= forward_Step + 30 && timer < 2 * forward_Step + 30)
-		SetPosition(Vector3::Add(GetPosition(), Vector3::ScalarProduct(GetLook(), fElapsedTime * 0.5f * 5, false)));
-	if (timer >= 2 * forward_Step + 30 && timer < 2 * forward_Step + 60)
-		Rotate(0.0f, 6.0f, 0.0f);
-
-	timer++;
-	if (timer == 2 * forward_Step + 60) timer = 0;
-
-	UpdateBoundingBox();
-}
-
-void CTankObject::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera)
-{
-	CGameObject::Render(pd3dCommandList, pCamera);
-}
-
-void CTankObject::ReleaseUploadBuffers()
-{
-	CGameObject::ReleaseUploadBuffers();
 }

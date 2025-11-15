@@ -49,6 +49,8 @@ public:
     // 본 계층 구조 정보 등록
     void SetBoneParent(int boneIndex, int parentIndex);
 
+    int GetBoneCount() const { return m_nBones; }
+
 private:
     // ============================
     // 내부 계산용 함수(정의만; 구현은 cpp)
