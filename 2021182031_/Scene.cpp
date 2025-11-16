@@ -6,6 +6,7 @@
 #include "Scene.h"
 #include "GameFramework.h"
 #include "AssetManager.h"
+#include "CAnimator.h"
 
 extern CGameFramework* g_pFramework;
 
@@ -251,9 +252,21 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandLis
 	m_pPlayer->SetSrvDescriptorInfo(m_pd3dSrvDescriptorHeap,m_nSrvDescriptorIncrementSize);
 	UINT nextSrvIndex = 0;
 
-	// 1) UnityChan Mesh 로드
+	// 1) Mesh 로드
 	CMesh* mesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.fbx", 2);
 	//CMesh* pCubeMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/HumanCharacterDummy_F.fbx", 2);
+
+	// 1-1) Animator 생성 + Mesh에 연결 (스켈레톤 정보 전달 + EnableSkinning)
+	CAnimator* pAnimator = new CAnimator();
+	mesh->SetAnimator(pAnimator);
+
+	// 1-2) 애니메이션 FBX 로드 → Animator에 클립 등록
+	mesh->LoadAnimationFromFBX("Models/unitychan_JUMP00.fbx");
+
+	// 1-3) 사용할 클립 선택 + 루프/재생 설정
+	//      - 0번 클립이 unitychan_JUMP00 이라고 가정
+	pAnimator->SetClip(0, true); // (clipIndex = 0, loop = true)
+	pAnimator->Play();
 
 	// 2) GameObject에 Mesh 장착
 	m_pPlayer->SetMesh(0, mesh);
@@ -286,7 +299,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandLis
 	}
 
 	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
-	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, -1.0f, -2.0f));
+	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, -0.0f, -2.0f));
 
 	m_pPlayer -> CreateShaderVariables(pd3dDevice, pd3dCommandList);
 	m_pPlayer -> SetShader(pShader);
