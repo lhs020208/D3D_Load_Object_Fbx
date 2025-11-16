@@ -88,15 +88,56 @@ VS_OUTPUT VSLighting(VS_INPUT input)
 VS_OUTPUT VSLightingSkinned(VS_INPUT_SKINNED input)
 {
     VS_OUTPUT output;
-    
-    float4 posW = mul(float4(input.position, 1.0f), gmtxWorld);
+
+    // ---------------------------
+    // 1) 본 스키닝 (로컬 공간)
+    // ---------------------------
+    float4 skinnedPos = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    float3 skinnedNormal = float3(0.0f, 0.0f, 0.0f);
+
+    uint indices[4] = { input.bi.x, input.bi.y, input.bi.z, input.bi.w };
+    float weights[4] = { input.bw.x, input.bw.y, input.bw.z, input.bw.w };
+
+    [unroll]
+    for (int i = 0; i < 4; ++i)
+    {
+        uint idx = indices[i];
+        float w = weights[i];
+
+        if (w <= 0.0f)
+            continue;
+        if (idx >= MAX_BONES)
+            continue;
+
+        float4 p = mul(float4(input.position, 1.0f), gBoneTransforms[idx]);
+        float3 n = mul(float4(input.normal, 0.0f), gBoneTransforms[idx]).xyz;
+
+        skinnedPos += p * w;
+        skinnedNormal += n * w;
+    }
+
+    // 혹시 모든 weight가 0인 경우 대비 (이론상은 안 나와야 함)
+    if (skinnedPos.w == 0.0f)
+        skinnedPos = float4(input.position, 1.0f);
+    if (all(skinnedNormal == 0.0f))
+        skinnedNormal = input.normal;
+
+    skinnedNormal = normalize(skinnedNormal);
+
+    // ---------------------------
+    // 2) 월드/뷰/프로젝션 변환
+    //    (기존 VSLighting과 동일한 패턴)
+    // ---------------------------
+    float4 posW = mul(skinnedPos, gmtxWorld);
     output.positionW = posW.xyz;
     output.positionH = mul(mul(float4(output.positionW, 1.0f), gmtxView), gmtxProjection);
 
-    output.normalW = mul(float4(input.normal, 0.0f), gmtxWorld).xyz;
-    output.normal = input.normal;
-    
-    output.uv = float2(0.0f, 0.0f);
+    output.normalW = mul(float4(skinnedNormal, 0.0f), gmtxWorld).xyz;
+    output.normal = skinnedNormal;
+
+    // ---------------------------
+    // 3) UV 그대로 전달
+    // ---------------------------
     output.uv = input.uv;
 
     return output;
