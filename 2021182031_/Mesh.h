@@ -134,6 +134,9 @@ protected:
 	CAnimator*						m_pAnimator = nullptr;   // 애니메이션 관리자
 	bool							m_bSkinnedMesh = false;        // 스키닝 메시 여부
 
+	// 이 Mesh를 만들 때 사용한 Device 보관
+	ID3D12Device*					m_pd3dDevice = nullptr;
+
 	ID3D12DescriptorHeap			*m_pd3dSrvDescriptorHeap = nullptr;
 	UINT							m_nSrvDescriptorIncrementSize = 0;
 	UINT							m_nTextureRootParameterIndex = 5;  // t0이 RootParam5라고 가정
@@ -180,7 +183,6 @@ public:
 	}
 
 	// Animator 결과를 GPU CBV로 업로드
-	void UpdateBoneTransforms(ID3D12GraphicsCommandList* cmd);
 	void LoadAnimationFromFBX(const char* filename);
 
 	void UpdateBoneConstantBuffer(ID3D12GraphicsCommandList* pCommandList);

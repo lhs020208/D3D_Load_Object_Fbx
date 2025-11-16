@@ -50,6 +50,7 @@ static inline void ApplyAxisFix(XMFLOAT3& p, XMFLOAT3& n, AxisFix fix, bool& fli
 
 CMesh::CMesh(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName, int FileType)
 {
+    m_pd3dDevice = pd3dDevice;
 	if (pstrFileName) {
 		if (FileType == 1) LoadMeshFromOBJ(pd3dDevice, pd3dCommandList, pstrFileName);
 		if (FileType == 2) LoadMeshFromFBX(pd3dDevice, pd3dCommandList, pstrFileName);
@@ -858,6 +859,27 @@ void CMesh::SetSrvDescriptorInfo(ID3D12DescriptorHeap* heap, UINT inc)
 void CMesh::SetAnimator(CAnimator* pAnimator)
 {
     m_pAnimator = pAnimator;
+
+    // Animator 없거나 본이 없으면 아무 것도 안 함
+    int nBones = (int)m_Bones.size();
+    if (!m_pAnimator || nBones <= 0) return;
+
+    // Device가 없으면 EnableSkinning을 할 수 없음
+    if (!m_pd3dDevice) return;
+
+    // 1) Animator에 스켈레톤 구조 전달
+    m_pAnimator->SetBoneCount(nBones);
+    for (int i = 0; i < nBones; ++i)
+    {
+        m_pAnimator->SetBoneOffsetMatrix(i, m_Bones[i].offsetMatrix);
+        m_pAnimator->SetBoneParent(i, m_Bones[i].parentIndex);
+    }
+
+    // 2) 스키닝용 상수 버퍼 생성 (cmdList는 여기서 필요 없으니 nullptr로)
+    EnableSkinning(m_pd3dDevice, nullptr, nBones);
+
+    // 3) 이 Mesh는 스키닝 메시다
+    m_bSkinnedMesh = true;
 }
 
 void CMesh::LoadAnimationFromFBX(const char* filename)
