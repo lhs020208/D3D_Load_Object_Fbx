@@ -389,48 +389,70 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
         mesh->GetUVSetNames(uvSets);
         const char* uvSetName = (uvSets.GetCount() > 0) ? uvSets.GetStringAt(0) : nullptr;
 
-        // ───── 정점 생성 ─────
-        for (int p = 0; p < polyCount; p++)
+        // ─────────────────────────────────────────────
+        // 정점 생성 (메시 로컬 좌표 기준, xform 사용 안 함)
+        // ─────────────────────────────────────────────
+        for (int p = 0; p < polyCount; ++p)
         {
-            int order[3] = { 0,1,2 };
+            int order[3] = { 0, 1, 2 };
             if (flip) std::swap(order[1], order[2]);
 
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < 3; ++i)
             {
                 int v = order[i];
+
+                // 컨트롤 포인트 인덱스
                 int cpIdx = mesh->GetPolygonVertex(p, v);
 
+                // 위치: 메쉬 로컬좌표 그대로
                 FbxVector4 cp = mesh->GetControlPointAt(cpIdx);
-                FbxVector4 pw = xform.MultT(cp);
+                XMFLOAT3 pos(
+                    (float)cp[0],
+                    (float)cp[1],
+                    (float)cp[2]
+                );
 
-                // normal
-                FbxVector4 n;
+                // 노말: 메쉬 로컬 노말 그대로, 필요시 정규화
+                FbxVector4 n(0, 0, 0, 0);
                 mesh->GetPolygonVertexNormal(p, v, n);
-                FbxVector4 nw = xform.MultT(FbxVector4(n[0], n[1], n[2], 0));
 
-                double L = sqrt(nw[0] * nw[0] + nw[1] * nw[1] + nw[2] * nw[2]);
-                if (L > 1e-12) { nw[0] /= L; nw[1] /= L; nw[2] /= L; }
+                double len = sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+                if (len > 1e-12)
+                {
+                    n[0] /= len;
+                    n[1] /= len;
+                    n[2] /= len;
+                }
 
-                // uv
-                XMFLOAT2 uv(0, 0);
+                XMFLOAT3 normal(
+                    (float)n[0],
+                    (float)n[1],
+                    (float)n[2]
+                );
+
+                // UV
+                XMFLOAT2 uv(0.0f, 0.0f);
                 if (uvSetName)
                 {
-                    FbxVector2 u;
-                    bool unm = false;
-                    if (mesh->GetPolygonVertexUV(p, v, uvSetName, u, unm)) {
-                        uv = ToXM2(u);
-                        uv.y = 1.0f - uv.y;
+                    FbxVector2 u(0.0, 0.0);
+                    bool unmapped = false;
+                    if (mesh->GetPolygonVertexUV(p, v, uvSetName, u, unmapped))
+                    {
+                        uv = XMFLOAT2((float)u[0], (float)u[1]);
+                        uv.y = 1.0f - uv.y; // FBX(v 위로↑) → DX(v 아래로↓)
                     }
                 }
 
-                sm.positions.push_back(ToXM3(pw));
-                sm.normals.push_back(ToXM3(nw));
+                // SubMesh에 push
+                sm.positions.push_back(pos);
+                sm.normals.push_back(normal);
                 sm.uvs.push_back(uv);
 
-                // 스키닝 기본값
+                // 기본 본 정보 (나중에 4개만 골라서 덮어씀)
                 sm.boneIndices.push_back(XMUINT4(0, 0, 0, 0));
                 sm.boneWeights.push_back(XMFLOAT4(1, 0, 0, 0));
 
+                // 인덱스
                 sm.indices.push_back((UINT)sm.indices.size());
             }
         }
@@ -1126,27 +1148,33 @@ void CMesh::LoadAnimationFromFBX(const char* filename)
 
 void CMesh::UpdateBoneConstantBuffer(ID3D12GraphicsCommandList* pCommandList)
 {
-    // 스키닝 안 하면 아무것도 하지 않음
+    // 스키닝 메쉬 + 애니메이터 없으면 스킵
     if (!m_bSkinnedMesh || !m_pAnimator) return;
     if (!m_pxmf4x4BoneTransforms || !m_pd3dcbBoneTransforms) return;
 
     const auto& finalMats = m_pAnimator->GetFinalBoneMatrices();
-    int nBones = (int)finalMats.size();
+    int nBones = static_cast<int>(finalMats.size());
     if (nBones <= 0) return;
 
+    if (nBones > 256) nBones = 256;
+
     // -------------------------------------------------------------------
-    // 1) CPU 배열(m_pxmf4x4BoneTransforms)에 Animator 결과 복사
+    // 1) CPU 배열(m_pxmf4x4BoneTransforms)에 Animator 결과 복사 (여기서 Transpose!)
     // -------------------------------------------------------------------
     for (int i = 0; i < nBones; ++i)
-        m_pxmf4x4BoneTransforms[i] = finalMats[i];
+    {
+        XMMATRIX M = XMLoadFloat4x4(&finalMats[i]);  // row-major skin (CAnimator::Update에서 만든 것)
+        M = XMMatrixTranspose(M);                   // column-major로 변환
+        XMStoreFloat4x4(&m_pxmf4x4BoneTransforms[i], M);
+    }
 
     // -------------------------------------------------------------------
-    // 2) GPU CBV(b4) 에 업로드 (Map → memcpy → Unmap)
+    // 2) GPU CBV(b4)에 업로드 (Map → memcpy → Unmap)
     // -------------------------------------------------------------------
     XMFLOAT4X4* pMapped = nullptr;
+    D3D12_RANGE readRange = { 0, 0 }; // CPU write-only
 
-    D3D12_RANGE readRange = { 0, 0 }; // CPU write only
-    HRESULT hr = m_pd3dcbBoneTransforms->Map(0, &readRange, (void**)&pMapped);
+    HRESULT hr = m_pd3dcbBoneTransforms->Map(0, &readRange, reinterpret_cast<void**>(&pMapped));
     if (FAILED(hr) || !pMapped) return;
 
     memcpy(pMapped,
@@ -1156,10 +1184,12 @@ void CMesh::UpdateBoneConstantBuffer(ID3D12GraphicsCommandList* pCommandList)
     m_pd3dcbBoneTransforms->Unmap(0, nullptr);
 
     // -------------------------------------------------------------------
-    // 3) 루트 시그니처 b4 에 바인딩
+    // 3) 루트 파라미터 [4] (b4)에 바인딩
     // -------------------------------------------------------------------
     pCommandList->SetGraphicsRootConstantBufferView(
         4,
         m_pd3dcbBoneTransforms->GetGPUVirtualAddress()
     );
 }
+
+

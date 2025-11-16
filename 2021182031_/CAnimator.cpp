@@ -112,12 +112,13 @@ void CAnimator::SetBoneParent(int boneIndex, int parentIndex)
 // ------------------------------------------------------------
 void CAnimator::Update(float dt)
 {
+    // 클립 / 본 없으면 아무것도 안 함
     if (m_Clips.empty() || m_nCurrentClip < 0 || m_nBones == 0)
         return;
 
     AnimationClip& clip = m_Clips[m_nCurrentClip];
 
-    // 1) 시간 진행 (재생 중일 때만)
+    // 1) 시간 갱신
     if (m_bPlaying)
     {
         m_fCurrentTime += dt;
@@ -125,26 +126,30 @@ void CAnimator::Update(float dt)
         if (m_fCurrentTime > clip.duration)
         {
             if (m_bLoop && clip.duration > 0.0f)
+            {
                 m_fCurrentTime = fmod(m_fCurrentTime, clip.duration);
+            }
             else
+            {
                 m_fCurrentTime = clip.duration;
+                m_bPlaying = false;
+            }
         }
     }
 
     float t = m_fCurrentTime;
+    size_t boneCount = static_cast<size_t>(m_nBones);
 
-    size_t boneCount = (size_t)m_nBones;
+    // 2) 포즈 배열 크기 맞추기
+    if (m_LocalPose.size() != boneCount)        m_LocalPose.resize(boneCount);
+    if (m_GlobalPose.size() != boneCount)       m_GlobalPose.resize(boneCount);
+    if (m_FinalBoneMatrices.size() != boneCount)m_FinalBoneMatrices.resize(boneCount);
 
-    // 2) Local / Global / Final 배열 크기 확보
-    m_LocalPose.resize(boneCount);
-    m_GlobalPose.resize(boneCount);
-    m_FinalBoneMatrices.resize(boneCount);
-
-    // 기본값은 Identity
+    // 3) 기본 Local Pose를 단위행렬로 초기화
     for (size_t i = 0; i < boneCount; ++i)
         XMStoreFloat4x4(&m_LocalPose[i], XMMatrixIdentity());
 
-    // 3) BoneTrack 별 키프레임 보간 → Local Pose 생성
+    // 4) BoneTrack에서 현재 시간 t에 해당하는 Local Pose 채우기
     for (auto& track : clip.boneTracks)
     {
         int boneIndex = track.boneIndex;
@@ -153,28 +158,36 @@ void CAnimator::Update(float dt)
         m_LocalPose[boneIndex] = InterpolateBoneMatrix(track, t);
     }
 
-    // 4) 계층을 따라 Global Pose 계산
+    // 5) 부모-자식 계층 따라 Global Pose 계산
     for (size_t i = 0; i < boneCount; ++i)
     {
         int parent = m_BoneParents[i];
-        XMFLOAT4X4 local = m_LocalPose[i];
 
         if (parent < 0)
-            m_GlobalPose[i] = local;
+        {
+            // 루트 본: Global = Local
+            m_GlobalPose[i] = m_LocalPose[i];
+        }
         else
-            m_GlobalPose[i] = CombineParentChild(m_GlobalPose[parent], local);
+        {
+            // 자식 본: Global = ParentGlobal * Local
+            m_GlobalPose[i] = CombineParentChild(m_GlobalPose[parent], m_LocalPose[i]);
+        }
     }
 
-    // 5) SkinMatrix = Offset * Global
+    // 6) Skin Matrix = Global * Offset  (transpose는 여기서 하지 않는다!)
     for (size_t i = 0; i < boneCount; ++i)
     {
         XMMATRIX global = XMLoadFloat4x4(&m_GlobalPose[i]);
-        XMMATRIX offset = XMLoadFloat4x4(&m_BoneOffsets[i]);
+        XMMATRIX offset = XMLoadFloat4x4(&m_BoneOffsets[i]); // offset = boneBind^-1 * meshBind
 
-        XMMATRIX skin = offset * global;
+        XMMATRIX skin = global * offset; // v' = v * global * offset
+
+        // 최종 스킨 행렬을 그대로 저장 (Transpose는 CMesh::UpdateBoneConstantBuffer에서 처리)
         XMStoreFloat4x4(&m_FinalBoneMatrices[i], skin);
     }
 }
+
 
 // ------------------------------------------------------------
 // private helper 들
@@ -249,9 +262,9 @@ XMFLOAT4X4 CAnimator::InterpolateBoneMatrix(const BoneKeyframes& track, float ti
 
 XMFLOAT4X4 CAnimator::CombineParentChild(const XMFLOAT4X4& parent, const XMFLOAT4X4& local)
 {
-    XMMATRIX P = XMLoadFloat4x4(&parent);
-    XMMATRIX L = XMLoadFloat4x4(&local);
+    XMMATRIX P = XMLoadFloat4x4(&parent); // parentGlobal
+    XMMATRIX L = XMLoadFloat4x4(&local);  // childLocal
     XMFLOAT4X4 out;
-    XMStoreFloat4x4(&out, L * P);   // childLocal * parentGlobal
+    XMStoreFloat4x4(&out, P * L);         // parentGlobal * childLocal
     return out;
 }

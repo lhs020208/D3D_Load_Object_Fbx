@@ -99,13 +99,16 @@ void CGameObject::CreateShaderVariables(ID3D12Device* pd3dDevice, ID3D12Graphics
 {
 }
 
-void CGameObject::UpdateShaderVariables(ID3D12GraphicsCommandList* pd3dCommandList)
+void CGameObject::UpdateShaderVariables(ID3D12GraphicsCommandList* cmd)
 {
-	XMFLOAT4X4 xmf4x4World;
-	XMStoreFloat4x4(&xmf4x4World, XMMatrixTranspose(XMLoadFloat4x4(&m_xmf4x4World)));
-	pd3dCommandList->SetGraphicsRoot32BitConstants(1, 16, &xmf4x4World, 0);
+	XMMATRIX W = XMLoadFloat4x4(&m_xmf4x4World);
+	XMMATRIX WT = XMMatrixTranspose(W);
 
-	pd3dCommandList->SetGraphicsRoot32BitConstants(1, 3, &m_xmf3Color, 16);
+	// b1에 world matrix 16개 float를 32bit constants로 올린다고 가정
+	cmd->SetGraphicsRoot32BitConstants(1, 16, &WT, 0);
+
+	// 색상 등 나머지 상수도 여기서 세팅
+	cmd->SetGraphicsRoot32BitConstants(1, 3, &m_xmf3Color, 16);
 }
 void CGameObject::UpdateShaderVariables(ID3D12GraphicsCommandList* pd3dCommandList, XMFLOAT4X4* pxmf4x4World)
 {
