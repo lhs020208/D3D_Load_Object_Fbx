@@ -87,12 +87,18 @@ void CMesh::ReleaseUploadBuffers()
 
 void CMesh::Render(ID3D12GraphicsCommandList* cmd)
 {
+    // --------------------------------------------------------
+    // 0) 스키닝 메시라면, 최신 본 행렬을 CB(b4)에 업로드 + 바인딩
+    //    (정적 메시면 내부에서 바로 return 하므로 문제 없음)
+    // --------------------------------------------------------
+    UpdateBoneConstantBuffer(cmd);
+
     cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
     for (auto& sm : m_SubMeshes)
     {
         // --------------------------------------------------------
-        // 1) SubMesh 텍스처 바인딩 (textureIndex가 유효한 경우)
+        // 1) SubMesh 텍스처 SRV 바인딩 (textureIndex 기반)
         // --------------------------------------------------------
         if (m_pd3dSrvDescriptorHeap && sm.textureIndex != UINT_MAX)
         {
@@ -103,7 +109,7 @@ void CMesh::Render(ID3D12GraphicsCommandList* cmd)
             );
 
             cmd->SetGraphicsRootDescriptorTable(
-                m_nTextureRootParameterIndex, // 일반적으로 5
+                m_nTextureRootParameterIndex, // 예: RootParam 5
                 hGPU
             );
         }
@@ -123,6 +129,7 @@ void CMesh::Render(ID3D12GraphicsCommandList* cmd)
         );
     }
 }
+
 
 
 void CMesh::LoadMeshFromOBJ(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, char* filename)
