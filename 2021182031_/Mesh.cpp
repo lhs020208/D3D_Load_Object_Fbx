@@ -594,17 +594,37 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
     // -----------------------------------------------------------------------------
     for (auto& sm : m_SubMeshes)
     {
-        // --- Vertex Buffer (pos+normal+uv 하나로 묶어 업로드) ---
-        struct VTX { XMFLOAT3 pos; XMFLOAT3 n; XMFLOAT2 uv; };
+        // --- Vertex Buffer (pos + normal + uv + boneIndices + boneWeights) ---
+        struct VTX_SKINNED
+        {
+            XMFLOAT3 pos;  // 0
+            XMFLOAT3 n;    // 12
+            XMFLOAT2 uv;   // 24
+            XMUINT4  bi;   // 32
+            XMFLOAT4 bw;   // 48  (총 64바이트)
+        };
 
-        vector<VTX> vtx(sm.positions.size());
-        for (size_t i = 0; i < vtx.size(); i++) {
+        std::vector<VTX_SKINNED> vtx(sm.positions.size());
+
+        for (size_t i = 0; i < vtx.size(); ++i)
+        {
             vtx[i].pos = sm.positions[i];
             vtx[i].n = sm.normals[i];
             vtx[i].uv = sm.uvs[i];
+
+            // boneIndices / boneWeights가 없는 경우도 대비해서 방어코드
+            if (i < sm.boneIndices.size())
+                vtx[i].bi = sm.boneIndices[i];
+            else
+                vtx[i].bi = XMUINT4(0, 0, 0, 0);
+
+            if (i < sm.boneWeights.size())
+                vtx[i].bw = sm.boneWeights[i];
+            else
+                vtx[i].bw = XMFLOAT4(1, 0, 0, 0);
         }
 
-        UINT vbSize = (UINT)(sizeof(VTX) * vtx.size());
+        UINT vbSize = static_cast<UINT>(sizeof(VTX_SKINNED) * vtx.size());
 
         sm.vb = CreateBufferResource(
             device, cmdList,
@@ -616,10 +636,10 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
 
         sm.vbView.BufferLocation = sm.vb->GetGPUVirtualAddress();
         sm.vbView.SizeInBytes = vbSize;
-        sm.vbView.StrideInBytes = sizeof(VTX);
+        sm.vbView.StrideInBytes = sizeof(VTX_SKINNED);
 
-        // --- Index Buffer ---
-        UINT ibSize = (UINT)(sizeof(UINT) * sm.indices.size());
+        // --- Index Buffer (기존 그대로) ---
+        UINT ibSize = static_cast<UINT>(sizeof(UINT) * sm.indices.size());
 
         sm.ib = CreateBufferResource(
             device, cmdList,
