@@ -59,31 +59,66 @@ CMesh::CMesh(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandLis
 
 CMesh::~CMesh()
 {
-    if (m_pd3dBoneIndexBuffer) m_pd3dBoneIndexBuffer->Release();
-    if (m_pd3dBoneWeightBuffer) m_pd3dBoneWeightBuffer->Release();
-    if (m_pd3dcbBoneTransforms) m_pd3dcbBoneTransforms->Release();
+    // --- 스키닝 관련 리소스 ---
+    if (m_pd3dBoneIndexBuffer) { m_pd3dBoneIndexBuffer->Release();        m_pd3dBoneIndexBuffer = nullptr; }
+    if (m_pd3dBoneWeightBuffer) { m_pd3dBoneWeightBuffer->Release();       m_pd3dBoneWeightBuffer = nullptr; }
+    if (m_pd3dcbBoneTransforms) { m_pd3dcbBoneTransforms->Release();       m_pd3dcbBoneTransforms = nullptr; }
 
-    if (m_pxu4BoneIndices) delete[] m_pxu4BoneIndices;
-    if (m_pxmf4BoneWeights) delete[] m_pxmf4BoneWeights;
-    if (m_pxmf4x4BoneTransforms) delete[] m_pxmf4x4BoneTransforms;
+    if (m_pxu4BoneIndices) { delete[] m_pxu4BoneIndices;              m_pxu4BoneIndices = nullptr; }
+    if (m_pxmf4BoneWeights) { delete[] m_pxmf4BoneWeights;             m_pxmf4BoneWeights = nullptr; }
+    if (m_pxmf4x4BoneTransforms) { delete[] m_pxmf4x4BoneTransforms;         m_pxmf4x4BoneTransforms = nullptr; }
 
+    // --- SubMesh GPU 리소스 / 업로드 버퍼 / 텍스처 정리 ---
+    for (auto& sm : m_SubMeshes)
+    {
+        if (sm.vb) { sm.vb->Release();            sm.vb = nullptr; }
+        if (sm.ib) { sm.ib->Release();            sm.ib = nullptr; }
+        if (sm.texture) { sm.texture->Release();       sm.texture = nullptr; }
+
+        if (sm.vbUpload) { sm.vbUpload->Release();      sm.vbUpload = nullptr; }
+        if (sm.ibUpload) { sm.ibUpload->Release();      sm.ibUpload = nullptr; }
+        if (sm.textureUpload) { sm.textureUpload->Release(); sm.textureUpload = nullptr; }
+    }
+
+    // --- 예전 폴리곤 데이터 정리 ---
     if (m_ppPolygons) {
         for (int i = 0; i < m_nPolygons; ++i) {
             if (m_ppPolygons[i]) delete m_ppPolygons[i];
         }
         delete[] m_ppPolygons;
+        m_ppPolygons = nullptr;
+    }
+}
+void CMesh::ReleaseUploadBuffers()
+{
+    // --- 스키닝용 업로드 버퍼 ---
+    if (m_pd3dBoneIndexUploadBuffer) {
+        m_pd3dBoneIndexUploadBuffer->Release();
+        m_pd3dBoneIndexUploadBuffer = nullptr;
+    }
+    if (m_pd3dBoneWeightUploadBuffer) {
+        m_pd3dBoneWeightUploadBuffer->Release();
+        m_pd3dBoneWeightUploadBuffer = nullptr;
+    }
+
+    // --- SubMesh마다 VB/IB/텍스처 업로드 버퍼 해제 ---
+    for (auto& sm : m_SubMeshes)
+    {
+        if (sm.vbUpload) {
+            sm.vbUpload->Release();
+            sm.vbUpload = nullptr;
+        }
+        if (sm.ibUpload) {
+            sm.ibUpload->Release();
+            sm.ibUpload = nullptr;
+        }
+        if (sm.textureUpload) {
+            sm.textureUpload->Release();
+            sm.textureUpload = nullptr;
+        }
     }
 }
 
-
-void CMesh::ReleaseUploadBuffers() 
-{
-	if (m_pd3dBoneIndexUploadBuffer) m_pd3dBoneIndexUploadBuffer->Release();
-	if (m_pd3dBoneWeightUploadBuffer) m_pd3dBoneWeightUploadBuffer->Release();
-
-	m_pd3dBoneIndexUploadBuffer = NULL;
-	m_pd3dBoneWeightUploadBuffer = NULL;
-};
 
 void CMesh::Render(ID3D12GraphicsCommandList* cmd)
 {
