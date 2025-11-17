@@ -165,4 +165,7 @@ public:
 	void UpdateBoneTransformsOnGPU(ID3D12GraphicsCommandList* cmdList,
 		const XMFLOAT4X4* boneMatrices,
 		int nBones);
+
+	bool IsSkinnedMesh() const { return m_bSkinnedMesh; }
+	bool HasBoneCB() const { return (m_pd3dcbBoneTransforms != nullptr); }
 };
