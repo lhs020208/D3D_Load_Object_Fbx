@@ -4,6 +4,8 @@
 
 #include "stdafx.h"
 #include "Mesh.h"
+#include "Animator.h"
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 CPolygon::CPolygon(int nVertices)
@@ -574,4 +576,44 @@ void CMesh::SetSrvDescriptorInfo(ID3D12DescriptorHeap* heap, UINT inc)
 {
     m_pd3dSrvDescriptorHeap = heap;
     m_nSrvDescriptorIncrementSize = inc;
+}
+
+//==========================================================================
+// Animator Helper Functions
+//==========================================================================
+
+// 본 개수 반환
+int CMesh::GetBoneCount() const
+{
+    return static_cast<int>(m_Bones.size());
+}
+
+// 본 이름으로 인덱스 검색
+int CMesh::GetBoneIndexByName(const std::string& boneName) const
+{
+    auto it = m_BoneNameToIndex.find(boneName);
+    if (it == m_BoneNameToIndex.end()) return -1;
+    return it->second;
+}
+
+// 본의 부모 인덱스 반환
+int CMesh::GetBoneParentIndex(int boneIndex) const
+{
+    if (boneIndex < 0 || boneIndex >= static_cast<int>(m_Bones.size()))
+        return -1;
+
+    return m_Bones[boneIndex].parentIndex;
+}
+
+// 애니메이터가 없으면 생성하고 스켈레톤 전달
+CAnimator* CMesh::EnsureAnimator()
+{
+    if (!m_pAnimator)
+    {
+        m_pAnimator = new CAnimator();
+
+        // 스켈레톤 전달 (Bone 배열 + 이름→index 매핑)
+        m_pAnimator->SetSkeleton(m_Bones, m_BoneNameToIndex);
+    }
+    return m_pAnimator;
 }
