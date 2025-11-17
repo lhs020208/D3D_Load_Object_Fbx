@@ -50,6 +50,7 @@ static inline void ApplyAxisFix(XMFLOAT3& p, XMFLOAT3& n, AxisFix fix, bool& fli
 
 CMesh::CMesh(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName, int FileType)
 {
+    m_pd3dDevice = pd3dDevice;
 	if (pstrFileName) {
 		if (FileType == 1) LoadMeshFromOBJ(pd3dDevice, pd3dCommandList, pstrFileName);
 		if (FileType == 2) LoadMeshFromFBX(pd3dDevice, pd3dCommandList, pstrFileName);
@@ -408,11 +409,76 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
 
 void CMesh::EnableSkinning(int nBones)
 {
-	m_bSkinnedMesh = true;
-	m_pxmf4x4BoneTransforms = new XMFLOAT4X4[nBones];
-	for (int i = 0; i < nBones; ++i)
-		XMStoreFloat4x4(&m_pxmf4x4BoneTransforms[i], XMMatrixIdentity());
+    // -----------------------------------------------------
+    // 1) 스키닝 활성화 상태 설정
+    // -----------------------------------------------------
+    m_bSkinnedMesh = true;
+
+    // -----------------------------------------------------
+    // 2) CPU 배열 (최종 본 행렬 저장 공간)
+    // -----------------------------------------------------
+    if (m_pxmf4x4BoneTransforms)
+        delete[] m_pxmf4x4BoneTransforms;
+
+    m_pxmf4x4BoneTransforms = new XMFLOAT4X4[nBones];
+
+    XMFLOAT4X4 identity;
+    XMStoreFloat4x4(&identity, XMMatrixIdentity());
+
+    for (int i = 0; i < nBones; ++i)
+        m_pxmf4x4BoneTransforms[i] = identity;
+
+    // -----------------------------------------------------
+    // 3) GPU 상수 버퍼 생성 (b4에 바인딩할 CBV)
+    //    - UPLOAD 힙에 만들면 매 프레임 memcpy로 업데이트 쉬움
+    // -----------------------------------------------------
+    UINT cbSize = (UINT)(sizeof(XMFLOAT4X4) * nBones);
+
+    // 기존 버퍼가 있다면 해제
+    if (m_pd3dcbBoneTransforms)
+    {
+        m_pd3dcbBoneTransforms->Release();
+        m_pd3dcbBoneTransforms = nullptr;
+    }
+
+    // 생성
+    CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC   bufferDesc =
+        CD3DX12_RESOURCE_DESC::Buffer((cbSize + 255) & ~255);
+    // 256-byte alignment for CB
+
+    HRESULT hr = m_pd3dDevice->CreateCommittedResource(
+        &heapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &bufferDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&m_pd3dcbBoneTransforms)
+    );
+
+    if (FAILED(hr))
+    {
+        OutputDebugStringA("[EnableSkinning] Failed to create bone CB.\n");
+        return;
+    }
+
+    // -----------------------------------------------------
+    // 4) 초기 boneTransforms 데이터를 GPU CB에 업로드
+    // -----------------------------------------------------
+    void* pMapped = nullptr;
+    m_pd3dcbBoneTransforms->Map(0, nullptr, &pMapped);
+    memcpy(pMapped, m_pxmf4x4BoneTransforms, cbSize);
+    m_pd3dcbBoneTransforms->Unmap(0, nullptr);
+
+    // -----------------------------------------------------
+    // 로그
+    // -----------------------------------------------------
+    std::ostringstream log;
+    log << "[EnableSkinning] Bone CB created. Bones: " << nBones
+        << ", Size: " << cbSize << " bytes\n";
+    OutputDebugStringA(log.str().c_str());
 }
+
 
 
 void CMesh::SetPolygon(int nIndex, CPolygon* pPolygon)

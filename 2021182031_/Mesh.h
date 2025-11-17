@@ -123,6 +123,7 @@ protected:
 	ID3D12DescriptorHeap			*m_pd3dSrvDescriptorHeap = nullptr;
 	UINT							m_nSrvDescriptorIncrementSize = 0;
 	UINT							m_nTextureRootParameterIndex = 5;  // t0이 RootParam5라고 가정
+	ID3D12Device*					m_pd3dDevice = nullptr;
 
 public:
 	virtual void Render(ID3D12GraphicsCommandList *pd3dCommandList);
