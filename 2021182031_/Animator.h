@@ -1,57 +1,75 @@
 #pragma once
 #include "stdafx.h"
+#include "AnimatorData.h"
 
 /*
     ============================================================
-    Keyframe
+    CAnimator
     ------------------------------------------------------------
-    - 특정 시각(timeSec)에서의 단일 본 정보(TRS)
-    - Rotation은 쿼터니언
+    - 스켈레톤 본 계층 정보를 보유
+    - AnimationClip 여러 개를 관리
+    - 매 프레임 Update(dt)에서 최종 본 행렬 계산
+    - CMesh가 이 최종 행렬을 받아 GPU에 올림
     ============================================================
 */
-struct Keyframe
+class CAnimator
 {
-    float       timeSec = 0.0f;     // 해당 키프레임의 시간(초)
-    XMFLOAT3    translation = { 0.f, 0.f, 0.f };
-    XMFLOAT4    rotationQuat = { 0.f, 0.f, 0.f, 1.f };
-    XMFLOAT3    scale = { 1.f, 1.f, 1.f };
-};
+public:
+    CAnimator() = default;
+    ~CAnimator() = default;
 
-/*
-    ============================================================
-    BoneKeyframes
-    ------------------------------------------------------------
-    - 특정 본 1개가 갖는 전체 키프레임 목록
-    - FBX 애니에서 본 이름으로 식별
-    ============================================================
-*/
-struct BoneKeyframes
-{
-    std::string         boneName;           // 본 이름
-    int                 boneIndex = -1;     // CMesh의 m_Bones 안에서의 인덱스
-    std::vector<Keyframe> keyframes;        // 시간순 정렬된 키프레임
+public:
+    // 스켈레톤(정적 본 목록)을 메시에서 받아오는 함수
+    void SetSkeleton(const std::vector<Bone>& bones,
+        const std::unordered_map<std::string, int>& boneNameToIndex);
 
-    // 키프레임이 하나도 없다면 이 본은 정적(기본 자세)로 취급
-};
+    // 애니메이션 클립 등록
+    void AddClip(const AnimationClip& clip);
 
-/*
-    ============================================================
-    AnimationClip
-    ------------------------------------------------------------
-    - 하나의 애니메이션 파일(예: Idle, Walk, Jump)에 해당
-    - 본별 BoneKeyframes 배열로 구성됨
-    - Evaluate(t): t초에 대해 본마다 로컬 TRS 행렬을 만들어낼 예정
-    ============================================================
-*/
-struct AnimationClip
-{
-    std::string name;            // 클립 이름 (예: "Idle", "Walk", "Jump")
-    float       duration = 0.f;  // 전체 길이(초), FBX에서 자동 계산 예정
+    // 클립 재생 (이름으로 찾기)
+    bool Play(const std::string& clipName, bool loop = true, float startTime = 0.0f);
 
-    // 본 인덱스 = CMesh.m_Bones의 인덱스와 동일한 위치에 저장
-    // 즉, m_BoneTracks[i]가 i번째 본의 트랙.
-    std::vector<BoneKeyframes> boneTracks;
+    // 강제 시간 설정
+    void SetTime(float timeSec);
 
-    // 이름 → 본트랙 인덱스 (필수는 아니지만 편의용)
-    std::unordered_map<std::string, int> boneNameToTrack;
+    // 정지
+    void Stop();
+
+    // 매 프레임 애니메이션 진행 + 최종 본 행렬 계산
+    void Update(float dt);
+
+    // 현재 재생 중인 클립 이름 반환
+    const std::string& GetCurrentClipName() const;
+
+    // 최종 본 행렬 배열 반환 (CMesh가 GPU 업로드용으로 사용)
+    const std::vector<XMFLOAT4X4>& GetFinalBoneMatrices() const;
+
+    // 스켈레톤 본 개수
+    int GetBoneCount() const { return (int)m_Skeleton.size(); }
+
+    // 애니메이션이 존재하는지 확인
+    bool HasClip(const std::string& name) const;
+
+private:
+    // 스켈레톤
+    std::vector<Bone> m_Skeleton;   // Bone.name, parentIndex, offsetMatrix 등
+    std::unordered_map<std::string, int> m_BoneNameToIndex;
+
+    // 클립들
+    std::unordered_map<std::string, AnimationClip> m_Clips;
+
+    // 현재 재생 중인 클립
+    AnimationClip* m_pCurrentClip = nullptr;
+
+    // 재생 시간 / 상태
+    float m_fCurrentTime = 0.0f;
+    bool  m_bPlaying = false;
+    bool  m_bLoop = true;
+
+    // 최종 bone matrices (VS에서 gBoneTransforms로 직접 들어갈 형태)
+    std::vector<XMFLOAT4X4> m_FinalBoneMatrices;
+
+    // 내부 버퍼 (로컬/글로벌 트랜스폼 계산 시 사용)
+    std::vector<XMFLOAT4X4> m_LocalPose;    // 각 본의 로컬 행렬
+    std::vector<XMFLOAT4X4> m_GlobalPose;   // 각 본의 글로벌 행렬
 };

@@ -1,9 +1,9 @@
 //------------------------------------------------------- ----------------------
 // File: Mesh.h
 //-----------------------------------------------------------------------------
-
 #pragma once
-
+#include "stdafx.h"
+#include "AnimatorData.h"
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 class CVertex
@@ -36,22 +36,6 @@ public:
 	XMFLOAT3 m_xmf3Normal;
 	CDiffusedVertex() : m_xmf4Diffuse(0, 0, 0, 0), m_xmf3Normal(0, 1, 0) {}
 	CDiffusedVertex(XMFLOAT3 pos, XMFLOAT4 dif, XMFLOAT3 normal) : CVertex(pos), m_xmf4Diffuse(dif), m_xmf3Normal(normal) {}
-};
-
-struct Bone
-{
-	std::string name;            // 본 이름
-	int parentIndex;             // 부모 본 인덱스
-	XMFLOAT4X4 offsetMatrix;     // Inverse Bind Pose (모델 공간 → 본 공간)
-};
-
-struct SkinnedVertex
-{
-	XMFLOAT3 position;
-	XMFLOAT3 normal;
-	XMFLOAT2 uv;
-	UINT boneIndices[4];     // 어떤 본들이 영향을 주는가
-	float boneWeights[4];    // 각 본의 영향 비율
 };
 
 struct SubMesh
