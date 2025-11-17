@@ -213,9 +213,9 @@ void CPlayer::SetCameraOffset(XMFLOAT3& xmf3CameraOffset)
 	m_pCamera->GenerateViewMatrix();
 }
 
-void CPlayer::Render(ID3D12GraphicsCommandList *pd3dCommandList, CCamera *pCamera)
+void CPlayer::Render(ID3D12GraphicsCommandList* cmdList, CCamera* pCamera, CScene* pScene)
 {
-	CGameObject::Render(pd3dCommandList, pCamera);
+	CGameObject::Render(cmdList, pCamera, pScene);
 }
 void CPlayer::reset()
 {
@@ -328,9 +328,9 @@ void CPersonPlayer::Animate(float fElapsedTime)
 	UpdateBoundingBox();
 }
 
-void CPersonPlayer::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera)
+void CPersonPlayer::Render(ID3D12GraphicsCommandList* cmdList, CCamera* pCamera, CScene* pScene)
 {
-	CPlayer::Render(pd3dCommandList, pCamera);
+	CPlayer::Render(cmdList, pCamera, pScene);
 }
 
 

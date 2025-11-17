@@ -8,6 +8,7 @@
 #include "Camera.h"
 
 class CShader;
+class CScene;
 
 class CGameObject
 {
@@ -35,7 +36,7 @@ public:
 
 	virtual void Animate(float fTimeElapsed);
 	virtual void OnPrepareRender() { }
-	virtual void Render(ID3D12GraphicsCommandList* cmd, CCamera* pCamera);
+	virtual void Render(ID3D12GraphicsCommandList* cmdList, CCamera* pCamera, CScene* pScene);
 	virtual void ReleaseUploadBuffers();
 
 	XMFLOAT3 GetPosition();
@@ -79,7 +80,7 @@ class CCubeObject : public CGameObject
 public:
 
 	virtual void Animate(float fElapsedTime) override;
-	virtual void Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera) override;
+	virtual void Render(ID3D12GraphicsCommandList* cmdList, CCamera* pCamera, CScene* pScene) override;
 
 };
 
@@ -88,7 +89,7 @@ class CTankObject : public CGameObject
 public:
 
 	virtual void Animate(float fElapsedTime) override;
-	virtual void Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera) override;
+	virtual void Render(ID3D12GraphicsCommandList* cmdList, CCamera* pCamera, CScene* pScene) override;
 	virtual void ReleaseUploadBuffers() override;
 
 	XMFLOAT4X4 m_pxmf4x4Transforms[EXPLOSION_DEBRISES];

@@ -80,7 +80,7 @@ public:
 
 	virtual CCamera *ChangeCamera(DWORD nNewCameraMode, float fTimeElapsed) { return(NULL); }
 	virtual void OnPrepareRender();
-	virtual void Render(ID3D12GraphicsCommandList *pd3dCommandList, CCamera *pCamera = NULL);
+	virtual void Render(ID3D12GraphicsCommandList* cmdList, CCamera* pCamera, CScene* pScene);
 	XMFLOAT3 LastUpVector = GetUp();  // 초기화 필요
 };
 
@@ -102,7 +102,7 @@ public:
 
 	virtual void OnPrepareRender();
 	virtual void Animate(float fElapsedTime) override;
-	virtual void Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera) override;
+	virtual void Render(ID3D12GraphicsCommandList* cmdList, CCamera* pCamera, CScene* pScene) override;
 	virtual void Rotate(float fPitch = 0.0f, float fYaw = 0.0f, float fRoll = 0.0f) override;
 	virtual CCamera* ChangeCamera(DWORD nNewCameraMode, float fTimeElapsed);
 

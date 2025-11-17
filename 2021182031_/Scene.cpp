@@ -203,14 +203,21 @@ struct LIGHT_CB
 	XMFLOAT3 LightColor;     float pad2 = 0.0f;
 };
 
-void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList* pd3dCommandList, 
-	ID3D12DescriptorHeap* m_pd3dSrvDescriptorHeap, UINT m_nSrvDescriptorIncrementSize)
+void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
+	ID3D12GraphicsCommandList* pd3dCommandList,
+	ID3D12DescriptorHeap* m_pd3dSrvDescriptorHeap,
+	UINT m_nSrvDescriptorIncrementSize)
 {
-	//m_pd3dGraphicsRootSignature = CreateGraphicsRootSignature(pd3dDevice);
+	//=====================================================================
+	// 0) 쉐이더 생성
+	//=====================================================================
 	CSkinnedLightingShader* pShader = new CSkinnedLightingShader();
 	pShader->CreateShader(pd3dDevice, m_pd3dGraphicsRootSignature);
 	pShader->CreateShaderVariables(pd3dDevice, pd3dCommandList);
 
+	//=====================================================================
+	// 1) Light CB 생성
+	//=====================================================================
 	LIGHT_CB lightData = { m_xmf3LightDirection, 0.0f, m_xmf3LightColor, 0.0f };
 
 	D3D12_HEAP_PROPERTIES heapProps = {};
@@ -220,76 +227,118 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandLis
 	heapProps.CreationNodeMask = 1;
 	heapProps.VisibleNodeMask = 1;
 
-	// 리소스 디스크립터
 	D3D12_RESOURCE_DESC resDesc = {};
 	resDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-	resDesc.Alignment = 0;
-	resDesc.Width = 256;
+	resDesc.Width = 256;   // CB는 256바이트 정렬
 	resDesc.Height = 1;
 	resDesc.DepthOrArraySize = 1;
 	resDesc.MipLevels = 1;
 	resDesc.Format = DXGI_FORMAT_UNKNOWN;
 	resDesc.SampleDesc.Count = 1;
-	resDesc.SampleDesc.Quality = 0;
 	resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-	resDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
-	// 리소스 생성
-	HRESULT hr = pd3dDevice->CreateCommittedResource(
+	HRESULT hr = S_OK;         // ★ 공용변수 (재정의 방지)
+	void* pMapped = nullptr;   // ★ 공용변수 (재정의 방지)
+
+	hr = pd3dDevice->CreateCommittedResource(
 		&heapProps, D3D12_HEAP_FLAG_NONE,
 		&resDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr, IID_PPV_ARGS(&m_pLightCB)
 	);
-	if (FAILED(hr)) OutputDebugString(L"CreateCommittedResource for LightCB failed!\n");
+	if (FAILED(hr)) OutputDebugString(L"[TankScene] LightCB Create failed!\n");
 
-	// 데이터 복사 (한 번만)
-	void* pMapped = nullptr;
 	m_pLightCB->Map(0, nullptr, &pMapped);
 	memcpy(pMapped, &lightData, sizeof(LIGHT_CB));
 	m_pLightCB->Unmap(0, nullptr);
 
-	m_pPlayer->SetSrvDescriptorInfo(m_pd3dSrvDescriptorHeap,m_nSrvDescriptorIncrementSize);
-	UINT nextSrvIndex = 0;
+	// Player에 SRV heap 정보 전달
+	m_pPlayer->SetSrvDescriptorInfo(m_pd3dSrvDescriptorHeap, m_nSrvDescriptorIncrementSize);
 
-	// 1) UnityChan Mesh 로드
+	//=====================================================================
+	// 2) UnityChan Mesh 로드
+	//=====================================================================
 	CMesh* mesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.fbx", 2);
-	//CMesh* pCubeMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/HumanCharacterDummy_F.fbx", 2);
 
-	// 2) GameObject에 Mesh 장착
+	//=====================================================================
+	// 3) Player에 Mesh 장착
+	//=====================================================================
 	m_pPlayer->SetMesh(0, mesh);
 	m_pPlayer->SetSrvDescriptorInfo(m_pd3dSrvDescriptorHeap, m_nSrvDescriptorIncrementSize);
 
-	// 3) Asset 타입 결정
-	AssetType assetType = AssetType::UnityChan;
-
+	//=====================================================================
 	// 4) SubMesh 자동 텍스처 매핑
-	UINT baseSRVIndex = 30; // 예시: 이 모델은 SRV 30~39 사용
+	//=====================================================================
+	AssetType assetType = AssetType::UnityChan;
+	UINT baseSRVIndex = 30;
 	int subIdx = 0;
 
 	for (auto& sm : mesh->m_SubMeshes)
 	{
-		// 4-1) SubMesh 이름 기반으로 텍스처 파일명 얻기
 		std::string texFile = GetTextureFileNameForSubMesh(sm, assetType);
-
-		// 전체 경로 구성
 		std::wstring wpath = ToWstring(std::string("Models/Texture/") + texFile);
 
-		// 4-2) 해당 SubMesh에 텍스처 로드 후 SRV 만들기
 		mesh->LoadTextureFromFile(
-			pd3dDevice, pd3dCommandList, m_pd3dSrvDescriptorHeap,
-			baseSRVIndex + subIdx, // 이 SubMesh가 쓸 SRV index
+			pd3dDevice,
+			pd3dCommandList,
+			m_pd3dSrvDescriptorHeap,
+			baseSRVIndex + subIdx,
 			wpath.c_str(),
-			subIdx                  // SubMesh.textureIndex = baseSRVIndex + subIdx;
+			subIdx
 		);
 
 		subIdx++;
 	}
 
+	//=====================================================================
+	// 5) Player 설정
+	//=====================================================================
 	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
 	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, -1.0f, -2.0f));
+	m_pPlayer->CreateShaderVariables(pd3dDevice, pd3dCommandList);
+	m_pPlayer->SetShader(pShader);
 
-	m_pPlayer -> CreateShaderVariables(pd3dDevice, pd3dCommandList);
-	m_pPlayer -> SetShader(pShader);
+	//=====================================================================
+	// 6) DefaultBoneCB 생성 (스키닝 없음 메시용)
+	//=====================================================================
+	const int MAX_BONES = 256;
+
+	// CPU 배열 준비
+	XMFLOAT4X4 identity;
+	XMStoreFloat4x4(&identity, XMMatrixIdentity());
+	std::vector<XMFLOAT4X4> defaultBones(MAX_BONES, identity);
+
+	UINT cbSize = sizeof(XMFLOAT4X4) * MAX_BONES;
+	cbSize = (cbSize + 255) & ~255;  // 256바이트 정렬
+
+	// 기존 것이 있다면 제거
+	if (m_pDefaultBoneCB)
+	{
+		m_pDefaultBoneCB->Release();
+		m_pDefaultBoneCB = nullptr;
+	}
+
+	CD3DX12_HEAP_PROPERTIES heapPropsUpload(D3D12_HEAP_TYPE_UPLOAD);
+	CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(cbSize);
+
+	hr = pd3dDevice->CreateCommittedResource(
+		&heapPropsUpload,
+		D3D12_HEAP_FLAG_NONE,
+		&bufferDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&m_pDefaultBoneCB)
+	);
+
+	if (FAILED(hr))
+		OutputDebugStringA("[TankScene] DefaultBoneCB Create failed!\n");
+
+	// 초기 bone matrix 업로드
+	pMapped = nullptr;
+	m_pDefaultBoneCB->Map(0, nullptr, &pMapped);
+	memcpy(pMapped, defaultBones.data(), sizeof(XMFLOAT4X4) * MAX_BONES);
+	m_pDefaultBoneCB->Unmap(0, nullptr);
+
+	OutputDebugStringA("[TankScene] DefaultBoneCB created.\n");
 }
 
 void CTankScene::ReleaseObjects()
@@ -318,7 +367,7 @@ void CTankScene::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCa
 	if (m_pLightCB)
 		pd3dCommandList->SetGraphicsRootConstantBufferView(3, m_pLightCB->GetGPUVirtualAddress());
 
-	if (m_pPlayer) m_pPlayer->Render(pd3dCommandList, pCamera);
+	if (m_pPlayer) m_pPlayer->Render(pd3dCommandList, pCamera, this);
 }
 void CTankScene::OnProcessingKeyboardMessage(HWND hWnd, UINT nMessageID, WPARAM wParam, LPARAM lParam)
 {

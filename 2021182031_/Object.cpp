@@ -98,16 +98,17 @@ void CGameObject::ReleaseShaderVariables()
 {
 }
 
-void CGameObject::Render(ID3D12GraphicsCommandList* cmd, CCamera* pCamera)
+void CGameObject::Render(ID3D12GraphicsCommandList* cmdList, CCamera* pCamera, CScene* pScene)
 {
 	OnPrepareRender();
-	UpdateShaderVariables(cmd);
+	UpdateShaderVariables(cmdList);
 
 	if (m_pShader)
-		m_pShader->Render(cmd, pCamera);
+		m_pShader->Render(cmdList, pCamera);
 
 	if (m_ppMeshes)
 	{
+		CScene* ppScene = pScene;
 		for (int i = 0; i < m_nMeshes; i++)
 		{
 			CMesh* pMesh = m_ppMeshes[i];
@@ -118,7 +119,7 @@ void CGameObject::Render(ID3D12GraphicsCommandList* cmd, CCamera* pCamera)
 			// ============================================================
 			if (pMesh->IsSkinnedMesh() && pMesh->HasBoneCB())
 			{
-				cmd->SetGraphicsRootConstantBufferView(
+				cmdList->SetGraphicsRootConstantBufferView(
 					4,  // Root Parameter Index for b4
 					pMesh->GetBoneCBAddress()
 				);
@@ -127,9 +128,9 @@ void CGameObject::Render(ID3D12GraphicsCommandList* cmd, CCamera* pCamera)
 
 
 			// ============================================================
-			// ¡Ú ¸Þ½Ã ·»´õ¸µ
+			// ¸Þ½Ã ·»´õ¸µ
 			// ============================================================
-			pMesh->Render(cmd);
+			pMesh->Render(cmdList);
 		}
 	}
 }
@@ -302,9 +303,9 @@ void CGameObject::SetRotationTransform(XMFLOAT4X4* pmxf4x4Transform)
 void CCubeObject::Animate(float fElapsedTime)
 {
 }
-void CCubeObject::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera)
+void CCubeObject::Render(ID3D12GraphicsCommandList* cmdList, CCamera* pCamera, CScene* pScene)
 {
-	CGameObject::Render(pd3dCommandList, pCamera);
+	CGameObject::Render(cmdList, pCamera, pScene);
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void CTankObject::Animate(float fElapsedTime)
@@ -326,9 +327,9 @@ void CTankObject::Animate(float fElapsedTime)
 	UpdateBoundingBox();
 }
 
-void CTankObject::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera)
+void CTankObject::Render(ID3D12GraphicsCommandList* cmdList, CCamera* pCamera, CScene* pScene)
 {
-	CGameObject::Render(pd3dCommandList, pCamera);
+	CGameObject::Render(cmdList, pCamera, pScene);
 }
 
 void CTankObject::ReleaseUploadBuffers()
