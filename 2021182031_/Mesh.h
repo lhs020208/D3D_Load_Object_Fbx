@@ -127,6 +127,12 @@ protected:
 
 public:
 	virtual void Render(ID3D12GraphicsCommandList *pd3dCommandList);
+	
+	D3D12_GPU_VIRTUAL_ADDRESS GetBoneCBAddress() const {
+		return m_pd3dcbBoneTransforms
+			? m_pd3dcbBoneTransforms->GetGPUVirtualAddress()
+			: 0;
+	}
 
 	void LoadMeshFromOBJ(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName);
 	void LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const char* filename);
@@ -161,7 +167,7 @@ public:
 	CAnimator* EnsureAnimator();
 
 	// --- Bone CBV °ü·Ã ÇïÆÛ ---
-	D3D12_GPU_VIRTUAL_ADDRESS GetBoneCBAddress() const;
+
 	void UpdateBoneTransformsOnGPU(ID3D12GraphicsCommandList* cmdList,
 		const XMFLOAT4X4* boneMatrices,
 		int nBones);

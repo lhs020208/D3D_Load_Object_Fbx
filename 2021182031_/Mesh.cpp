@@ -686,13 +686,6 @@ CAnimator* CMesh::EnsureAnimator()
 // Bone CBV 관련
 //---------------------------------------------------------------------------
 
-// CBV GPU 주소 반환 (루트 파라미터 b4에 쓸 값)
-D3D12_GPU_VIRTUAL_ADDRESS CMesh::GetBoneCBAddress() const
-{
-    if (!m_pd3dcbBoneTransforms) return 0;
-    return m_pd3dcbBoneTransforms->GetGPUVirtualAddress();
-}
-
 // 애니메이션 결과 본 행렬을 GPU 상수버퍼에 업로드
 void CMesh::UpdateBoneTransformsOnGPU(ID3D12GraphicsCommandList* cmdList,
     const XMFLOAT4X4* boneMatrices,

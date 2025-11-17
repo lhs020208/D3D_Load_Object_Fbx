@@ -108,28 +108,20 @@ void CGameObject::Render(ID3D12GraphicsCommandList* cmdList, CCamera* pCamera, C
 
 	if (m_ppMeshes)
 	{
-		CScene* ppScene = pScene;
 		for (int i = 0; i < m_nMeshes; i++)
 		{
 			CMesh* pMesh = m_ppMeshes[i];
 			if (!pMesh) continue;
 
-			// ============================================================
-			// 스키닝 메시라면 Bone CBV(b4) 바인딩 추가
-			// ============================================================
+			// ★ 스키닝 메시이면 b4에 본 행렬 CBV 바인딩
 			if (pMesh->IsSkinnedMesh() && pMesh->HasBoneCB())
 			{
-				cmdList->SetGraphicsRootConstantBufferView(
-					4,  // Root Parameter Index for b4
-					pMesh->GetBoneCBAddress()
-				);
+				D3D12_GPU_VIRTUAL_ADDRESS boneCB = pMesh->GetBoneCBAddress();
+				if (boneCB)
+					cmdList->SetGraphicsRootConstantBufferView(4, boneCB);
 			}
-			// 스키닝이 아니라면 아무것도 건드리지 않음 (기존 동작 유지)
 
-
-			// ============================================================
-			// 메시 렌더링
-			// ============================================================
+			// 실제 메시 렌더
 			pMesh->Render(cmdList);
 		}
 	}

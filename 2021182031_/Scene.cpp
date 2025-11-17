@@ -302,7 +302,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	const int MAX_BONES = 256;
 
-	// CPU 배열 준비
+	// 1) CPU 배열 준비
 	XMFLOAT4X4 identity;
 	XMStoreFloat4x4(&identity, XMMatrixIdentity());
 	std::vector<XMFLOAT4X4> defaultBones(MAX_BONES, identity);
@@ -310,35 +310,57 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	UINT cbSize = sizeof(XMFLOAT4X4) * MAX_BONES;
 	cbSize = (cbSize + 255) & ~255;  // 256바이트 정렬
 
-	// 기존 것이 있다면 제거
+	// 2) 기존 것이 있다면 제거
 	if (m_pDefaultBoneCB)
 	{
 		m_pDefaultBoneCB->Release();
 		m_pDefaultBoneCB = nullptr;
 	}
 
-	CD3DX12_HEAP_PROPERTIES heapPropsUpload(D3D12_HEAP_TYPE_UPLOAD);
-	CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(cbSize);
+	// 3) 업로드 힙에 상수버퍼 리소스 생성
+	D3D12_HEAP_PROPERTIES boneHeapProps = {};
+	boneHeapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
+	boneHeapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+	boneHeapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+	boneHeapProps.CreationNodeMask = 1;
+	boneHeapProps.VisibleNodeMask = 1;
 
-	hr = pd3dDevice->CreateCommittedResource(
-		&heapPropsUpload,
+	D3D12_RESOURCE_DESC boneResDesc = {};
+	boneResDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	boneResDesc.Alignment = 0;
+	boneResDesc.Width = cbSize;
+	boneResDesc.Height = 1;
+	boneResDesc.DepthOrArraySize = 1;
+	boneResDesc.MipLevels = 1;
+	boneResDesc.Format = DXGI_FORMAT_UNKNOWN;
+	boneResDesc.SampleDesc.Count = 1;
+	boneResDesc.SampleDesc.Quality = 0;
+	boneResDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	boneResDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+	HRESULT hrBone = pd3dDevice->CreateCommittedResource(
+		&boneHeapProps,
 		D3D12_HEAP_FLAG_NONE,
-		&bufferDesc,
+		&boneResDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(&m_pDefaultBoneCB)
 	);
 
-	if (FAILED(hr))
-		OutputDebugStringA("[TankScene] DefaultBoneCB Create failed!\n");
+	if (FAILED(hrBone))
+	{
+		OutputDebugStringA("[TankScene] Failed to create default bone CB.\n");
+	}
+	else
+	{
+		// 4) 초기 데이터 업로드 (전부 identity)
+		void* pBone = nullptr;
+		m_pDefaultBoneCB->Map(0, nullptr, &pBone);
+		memcpy(pBone, defaultBones.data(), sizeof(XMFLOAT4X4) * MAX_BONES);
+		m_pDefaultBoneCB->Unmap(0, nullptr);
 
-	// 초기 bone matrix 업로드
-	pMapped = nullptr;
-	m_pDefaultBoneCB->Map(0, nullptr, &pMapped);
-	memcpy(pMapped, defaultBones.data(), sizeof(XMFLOAT4X4) * MAX_BONES);
-	m_pDefaultBoneCB->Unmap(0, nullptr);
-
-	OutputDebugStringA("[TankScene] DefaultBoneCB created.\n");
+		OutputDebugStringA("[TankScene] DefaultBoneCB created.\n");
+	}
 }
 
 void CTankScene::ReleaseObjects()
@@ -367,7 +389,13 @@ void CTankScene::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCa
 	if (m_pLightCB)
 		pd3dCommandList->SetGraphicsRootConstantBufferView(3, m_pLightCB->GetGPUVirtualAddress());
 
-	if (m_pPlayer) m_pPlayer->Render(pd3dCommandList, pCamera, this);
+	// b4: 디폴트 Bone CB (스키닝 없는 메시용 기본값)
+	if (m_pDefaultBoneCB)
+		pd3dCommandList->SetGraphicsRootConstantBufferView(4, m_pDefaultBoneCB->GetGPUVirtualAddress());
+
+	// 이후 객체 렌더
+	if (m_pPlayer)
+		m_pPlayer->Render(pd3dCommandList, pCamera, this);
 }
 void CTankScene::OnProcessingKeyboardMessage(HWND hWnd, UINT nMessageID, WPARAM wParam, LPARAM lParam)
 {
