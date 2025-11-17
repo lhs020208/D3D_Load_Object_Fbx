@@ -138,4 +138,24 @@ public:
 		ID3D12DescriptorHeap* srvHeap,UINT descriptorIndex,const wchar_t* fileName,int subMeshIndex);
 	
 	vector<SubMesh> m_SubMeshes;
+
+	// CAnimator 연동을 위한 헬퍼 함수들
+	// 본 개수 반환
+	int GetBoneCount() const;
+
+	// 본 이름으로 인덱스를 찾는 함수
+	// 존재하지 않으면 -1 반환
+	int GetBoneIndexByName(const std::string& boneName) const;
+
+	// 본의 부모 인덱스 반환
+	int GetBoneParentIndex(int boneIndex) const;
+
+	// 전체 본 배열 반환 (읽기 전용)
+	const std::vector<Bone>& GetBones() const { return m_Bones; }
+
+	// 애니메이터 포인터 반환
+	CAnimator* GetAnimator() const { return m_pAnimator; }
+
+	// 애니메이터가 없으면 자동 생성하여 반환
+	CAnimator* EnsureAnimator();
 };
