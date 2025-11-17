@@ -677,9 +677,63 @@ CAnimator* CMesh::EnsureAnimator()
     if (!m_pAnimator)
     {
         m_pAnimator = new CAnimator();
-
-        // 스켈레톤 전달 (Bone 배열 + 이름→index 매핑)
         m_pAnimator->SetSkeleton(m_Bones, m_BoneNameToIndex);
     }
     return m_pAnimator;
+}
+
+//---------------------------------------------------------------------------
+// Bone CBV 관련
+//---------------------------------------------------------------------------
+
+// CBV GPU 주소 반환 (루트 파라미터 b4에 쓸 값)
+D3D12_GPU_VIRTUAL_ADDRESS CMesh::GetBoneCBAddress() const
+{
+    if (!m_pd3dcbBoneTransforms) return 0;
+    return m_pd3dcbBoneTransforms->GetGPUVirtualAddress();
+}
+
+// 애니메이션 결과 본 행렬을 GPU 상수버퍼에 업로드
+void CMesh::UpdateBoneTransformsOnGPU(ID3D12GraphicsCommandList* cmdList,
+    const XMFLOAT4X4* boneMatrices,
+    int nBones)
+{
+    // 현재 구현에서는 cmdList를 쓸 일이 없음 (UPLOAD 힙 상수버퍼)
+    (void)cmdList;
+
+    if (!m_bSkinnedMesh) return;
+    if (!m_pd3dcbBoneTransforms) return;
+    if (!boneMatrices) return;
+    if (nBones <= 0) return;
+
+    const int boneCount = static_cast<int>(m_Bones.size());
+    if (boneCount <= 0) return;
+
+    // 넘겨준 개수가 실제 본 개수보다 크면 클램프
+    if (nBones > boneCount) nBones = boneCount;
+
+    const UINT copySize = sizeof(XMFLOAT4X4) * nBones;
+
+    // 1) CPU 캐시(m_pxmf4x4BoneTransforms) 업데이트
+    if (m_pxmf4x4BoneTransforms)
+    {
+        memcpy(m_pxmf4x4BoneTransforms, boneMatrices, copySize);
+    }
+
+    // 2) GPU 상수 버퍼에 업로드 (UPLOAD 힙이므로 Map/Unmap만 하면 됨)
+    void* pMapped = nullptr;
+
+    // 우리는 읽지 않으므로 readRange를 {0,0}으로 설정
+    D3D12_RANGE readRange = { 0, 0 };
+    HRESULT hr = m_pd3dcbBoneTransforms->Map(0, &readRange, &pMapped);
+    if (FAILED(hr) || !pMapped)
+    {
+        OutputDebugStringA("[UpdateBoneTransformsOnGPU] Map failed.\n");
+        return;
+    }
+
+    memcpy(pMapped, boneMatrices, copySize);
+
+    // 전체 범위를 썼으므로 writtenRange는 nullptr로 두어도 됨
+    m_pd3dcbBoneTransforms->Unmap(0, nullptr);
 }

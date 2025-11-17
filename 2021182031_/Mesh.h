@@ -159,4 +159,10 @@ public:
 
 	// 애니메이터가 없으면 자동 생성하여 반환
 	CAnimator* EnsureAnimator();
+
+	// --- Bone CBV 관련 헬퍼 ---
+	D3D12_GPU_VIRTUAL_ADDRESS GetBoneCBAddress() const;
+	void UpdateBoneTransformsOnGPU(ID3D12GraphicsCommandList* cmdList,
+		const XMFLOAT4X4* boneMatrices,
+		int nBones);
 };
