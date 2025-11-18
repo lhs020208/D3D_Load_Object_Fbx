@@ -6,6 +6,7 @@
 #include "Object.h"
 #include "Shader.h"
 #include "GameFramework.h"
+#include "Animator.h"
 
 inline float RandF(float fMin, float fMax)
 {
@@ -72,7 +73,37 @@ void CGameObject::SetShader(CShader *pShader)
 
 void CGameObject::Animate(float fTimeElapsed)
 {
+	// 메시가 없으면 할 일 없음
+	if (!m_ppMeshes || m_nMeshes <= 0) return;
+
+	for (int i = 0; i < m_nMeshes; ++i)
+	{
+		CMesh* pMesh = m_ppMeshes[i];
+		if (!pMesh) continue;
+
+		// 스키닝 메시가 아니면 애니메이션 처리 안 함
+		if (!pMesh->IsSkinnedMesh()) continue;
+
+		// 애니메이터 확보(없으면 생성 + 스켈레톤 연결)
+		CAnimator* pAnimator = pMesh->EnsureAnimator();
+		if (!pAnimator) continue;
+
+		// 1) 애니메이터 업데이트 (현재 클립 시간 진행 + 본 행렬 계산)
+		pAnimator->Update(fTimeElapsed);
+
+		// 2) 최종 본 행렬들을 가져와서 CBV에 업로드
+		const auto& finalMats = pAnimator->GetFinalBoneMatrices();
+		if (!finalMats.empty())
+		{
+			// 현재 구현에서는 cmdList를 쓰지 않으므로 nullptr 전달해도 됨
+			pMesh->UpdateBoneTransformsOnGPU(
+				nullptr,
+				finalMats.data(),
+				static_cast<int>(finalMats.size()));
+		}
+	}
 }
+
 
 void CGameObject::CreateShaderVariables(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList* pd3dCommandList)
 {
