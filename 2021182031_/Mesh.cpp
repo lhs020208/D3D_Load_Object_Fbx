@@ -356,45 +356,169 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
     // -----------------------------------------------------------------------------
     for (auto& sm : m_SubMeshes)
     {
-        // --- Vertex Buffer (pos+normal+uv 하나로 묶어 업로드) ---
-        struct VTX { XMFLOAT3 pos; XMFLOAT3 n; XMFLOAT2 uv; };
+        const auto& positions = sm.positions;
+        const auto& normals = sm.normals;
+        const auto& uvs = sm.uvs;
+        const auto& indices = sm.indices;
+        const auto& boneIndices = sm.boneIndices;
+        const auto& boneWeights = sm.boneWeights;
 
-        vector<VTX> vtx(sm.positions.size());
-        for (size_t i = 0; i < vtx.size(); i++) {
-            vtx[i].pos = sm.positions[i];
-            vtx[i].n = sm.normals[i];
-            vtx[i].uv = sm.uvs[i];
+        // -------------------------
+        // 8-1) SkinnedVertex 배열로 패킹
+        // -------------------------
+        std::vector<SkinnedVertex> vertices(positions.size());
+
+        for (size_t i = 0; i < positions.size(); ++i)
+        {
+            SkinnedVertex v{};
+            v.position = positions[i];
+
+            if (i < normals.size())
+                v.normal = normals[i];
+            else
+                v.normal = XMFLOAT3(0.f, 1.f, 0.f);
+
+            if (i < uvs.size())
+                v.uv = uvs[i];
+            else
+                v.uv = XMFLOAT2(0.f, 0.f);
+
+            // bone indices / weights
+            // 아직 FBX에서 스킨 정보를 제대로 안 채웠다면,
+            // 기본값: 첫 번째 본(0)만 1.0, 나머지 0.0
+            if (i < boneIndices.size())
+            {
+                const XMUINT4& bi = boneIndices[i];
+                v.boneIndices[0] = bi.x;
+                v.boneIndices[1] = bi.y;
+                v.boneIndices[2] = bi.z;
+                v.boneIndices[3] = bi.w;
+            }
+            else
+            {
+                v.boneIndices[0] = 0;
+                v.boneIndices[1] = 0;
+                v.boneIndices[2] = 0;
+                v.boneIndices[3] = 0;
+            }
+
+            if (i < boneWeights.size())
+            {
+                const XMFLOAT4& bw = boneWeights[i];
+                v.boneWeights[0] = bw.x;
+                v.boneWeights[1] = bw.y;
+                v.boneWeights[2] = bw.z;
+                v.boneWeights[3] = bw.w;
+            }
+            else
+            {
+                v.boneWeights[0] = 1.0f;
+                v.boneWeights[1] = 0.0f;
+                v.boneWeights[2] = 0.0f;
+                v.boneWeights[3] = 0.0f;
+            }
+
+            vertices[i] = v;
         }
 
-        UINT vbSize = (UINT)(sizeof(VTX) * vtx.size());
+        // -------------------------
+        // 8-2) Vertex Buffer 생성
+        // -------------------------
+        UINT vbSize = static_cast<UINT>(vertices.size() * sizeof(SkinnedVertex));
 
-        sm.vb = CreateBufferResource(
-            device, cmdList,
-            vtx.data(), vbSize,
-            D3D12_HEAP_TYPE_DEFAULT,
-            D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-            &sm.vbUpload
+        CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
+        CD3DX12_RESOURCE_DESC   resDesc = CD3DX12_RESOURCE_DESC::Buffer(vbSize);
+
+        HRESULT hr = m_pd3dDevice->CreateCommittedResource(
+            &heapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &resDesc,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            nullptr,
+            IID_PPV_ARGS(&sm.vb)
         );
+        if (FAILED(hr)) OutputDebugString(L"[FBX] Failed to create VB.\n");
+
+        CD3DX12_HEAP_PROPERTIES uploadHeapProps(D3D12_HEAP_TYPE_UPLOAD);
+        hr = m_pd3dDevice->CreateCommittedResource(
+            &uploadHeapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &resDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&sm.vbUpload)
+        );
+        if (FAILED(hr)) OutputDebugString(L"[FBX] Failed to create VB upload.\n");
+
+        // 데이터 복사
+        void* mapped = nullptr;
+        CD3DX12_RANGE readRange(0, 0);
+        sm.vbUpload->Map(0, &readRange, &mapped);
+        memcpy(mapped, vertices.data(), vbSize);
+        sm.vbUpload->Unmap(0, nullptr);
+
+        // 업로드 → 디폴트 버퍼
+        cmdList->CopyBufferRegion(sm.vb, 0, sm.vbUpload, 0, vbSize);
+
+        CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            sm.vb,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER
+        );
+        cmdList->ResourceBarrier(1, &barrier);
 
         sm.vbView.BufferLocation = sm.vb->GetGPUVirtualAddress();
         sm.vbView.SizeInBytes = vbSize;
-        sm.vbView.StrideInBytes = sizeof(VTX);
+        sm.vbView.StrideInBytes = sizeof(SkinnedVertex); // ★ 64 bytes
 
-        // --- Index Buffer ---
-        UINT ibSize = (UINT)(sizeof(UINT) * sm.indices.size());
+        // -------------------------
+        // 8-3) Index Buffer 생성 (기존 그대로)
+        // -------------------------
+        if (!indices.empty())
+        {
+            UINT ibSize = static_cast<UINT>(indices.size() * sizeof(UINT));
 
-        sm.ib = CreateBufferResource(
-            device, cmdList,
-            sm.indices.data(), ibSize,
-            D3D12_HEAP_TYPE_DEFAULT,
-            D3D12_RESOURCE_STATE_INDEX_BUFFER,
-            &sm.ibUpload
-        );
+            CD3DX12_RESOURCE_DESC ibDesc = CD3DX12_RESOURCE_DESC::Buffer(ibSize);
 
-        sm.ibView.BufferLocation = sm.ib->GetGPUVirtualAddress();
-        sm.ibView.SizeInBytes = ibSize;
-        sm.ibView.Format = DXGI_FORMAT_R32_UINT;
+            hr = m_pd3dDevice->CreateCommittedResource(
+                &heapProps,
+                D3D12_HEAP_FLAG_NONE,
+                &ibDesc,
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                nullptr,
+                IID_PPV_ARGS(&sm.ib)
+            );
+            if (FAILED(hr)) OutputDebugString(L"[FBX] Failed to create IB.\n");
+
+            hr = m_pd3dDevice->CreateCommittedResource(
+                &uploadHeapProps,
+                D3D12_HEAP_FLAG_NONE,
+                &ibDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(&sm.ibUpload)
+            );
+            if (FAILED(hr)) OutputDebugString(L"[FBX] Failed to create IB upload.\n");
+
+            sm.ibUpload->Map(0, &readRange, &mapped);
+            memcpy(mapped, indices.data(), ibSize);
+            sm.ibUpload->Unmap(0, nullptr);
+
+            cmdList->CopyBufferRegion(sm.ib, 0, sm.ibUpload, 0, ibSize);
+
+            CD3DX12_RESOURCE_BARRIER ibBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+                sm.ib,
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                D3D12_RESOURCE_STATE_INDEX_BUFFER
+            );
+            cmdList->ResourceBarrier(1, &ibBarrier);
+
+            sm.ibView.BufferLocation = sm.ib->GetGPUVirtualAddress();
+            sm.ibView.SizeInBytes = ibSize;
+            sm.ibView.Format = DXGI_FORMAT_R32_UINT;
+        }
     }
+
 
 
     // 로그
