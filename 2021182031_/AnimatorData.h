@@ -60,6 +60,8 @@ struct Bone
 {
     std::string name;            // 본 이름
     int parentIndex;             // 부모 본 인덱스
+    // inverse bind pose (모델 공간 → 본 공간)
+    // 나중에 FBX Skin(Cluster)에서 실제 값을 채울 예정.
     XMFLOAT4X4 offsetMatrix;     // Inverse Bind Pose (모델 공간 → 본 공간)
 };
 

@@ -172,7 +172,9 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
     if (meshes.empty()) { mgr->Destroy(); return; }
 
     // -----------------------------------------------------------------------------
-    // 4) 본 스켈레톤 추출 (구버전 기능 유지)
+    // 4) 본 스켈레톤 추출
+    //    - Bone.offsetMatrix는 "inverse bind pose (model → bone)" 용도로 사용한다.
+    //    - 지금은 임시로 identity를 넣고, 나중에 Skin(Cluster)에서 실제 값을 채울 것.
     // -----------------------------------------------------------------------------
     m_Bones.clear();
     m_BoneNameToIndex.clear();
@@ -190,10 +192,12 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                     b.name = node->GetName();
                     b.parentIndex = parent;
 
-                    FbxAMatrix g = node->EvaluateGlobalTransform();
-                    for (int r = 0; r < 4; ++r)
-                        for (int c = 0; c < 4; ++c)
-                            b.offsetMatrix.m[r][c] = (float)g.Get(r, c);
+                    // NOTE:
+                    //  - offsetMatrix를 "inverse bind pose"로 사용할 것이다.
+                    //  - 나중에 FbxCluster::GetTransformMatrix / GetTransformLinkMatrix를 사용해서
+                    //    실제 inverse bind를 계산해 넣을 예정.
+                    //  - 지금은 임시로 identity로 초기화한다.
+                    XMStoreFloat4x4(&b.offsetMatrix, XMMatrixIdentity());
 
                     self = (int)m_Bones.size();
                     m_BoneNameToIndex[b.name] = self;
@@ -204,7 +208,48 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
             for (int i = 0; i < node->GetChildCount(); ++i)
                 ExtractBones(node->GetChild(i), self);
         };
+
     ExtractBones(scene->GetRootNode(), -1);
+
+    // -----------------------------------------------------------------------------
+// 4-1) TODO: FBX Skin/Cluster에서 실제 inverse bind pose 채우기
+//           - 각 FbxMesh의 FbxSkin / FbxCluster를 순회하면서
+//             cluster.GetLink() (본 노드) 이름을 통해 m_Bones 인덱스를 찾고,
+//             cluster.GetTransformMatrix() / GetTransformLinkMatrix()를 사용해
+//             model→bone 공간의 inverse bind 행렬을 계산해서
+//             m_Bones[boneIndex].offsetMatrix에 써 넣는다.
+// -----------------------------------------------------------------------------
+// 예시 스켈레톤 (구현은 이후 단계에서):
+// for (FbxMesh* mesh : meshes)
+// {
+//     int skinCount = mesh->GetDeformerCount(FbxDeformer::eSkin);
+//     for (int s = 0; s < skinCount; ++s)
+//     {
+//         FbxSkin* skin = (FbxSkin*)mesh->GetDeformer(s, FbxDeformer::eSkin);
+//         int clusterCount = skin->GetClusterCount();
+//         for (int c = 0; c < clusterCount; ++c)
+//         {
+//             FbxCluster* cluster = skin->GetCluster(c);
+//             FbxNode*    linkNode = cluster->GetLink(); // 본 노드
+//             if (!linkNode) continue;
+//
+//             const char* boneName = linkNode->GetName();
+//             auto it = m_BoneNameToIndex.find(boneName);
+//             if (it == m_BoneNameToIndex.end()) continue;
+//
+//             int boneIndex = it->second;
+//
+//             FbxAMatrix meshM, linkM;
+//             cluster->GetTransformMatrix(meshM);       // 메쉬 바인드 자세
+//             cluster->GetTransformLinkMatrix(linkM);   // 본 바인드 자세
+//
+//             // TODO: 여기서 meshM, linkM을 사용해서
+//             //       model→bone inverse bind를 계산하고
+//             //       m_Bones[boneIndex].offsetMatrix에 기록.
+//         }
+//     }
+// }
+
 
     // -----------------------------------------------------------------------------
     // 5) SubMesh 로 변환 (핵심)
