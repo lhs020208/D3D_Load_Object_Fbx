@@ -6,6 +6,7 @@
 #include "Scene.h"
 #include "GameFramework.h"
 #include "AssetManager.h"
+#include "Animator.h"
 
 extern CGameFramework* g_pFramework;
 
@@ -237,8 +238,8 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	resDesc.SampleDesc.Count = 1;
 	resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
-	HRESULT hr = S_OK;         // ★ 공용변수 (재정의 방지)
-	void* pMapped = nullptr;   // ★ 공용변수 (재정의 방지)
+	HRESULT hr = S_OK;
+	void* pMapped = nullptr;
 
 	hr = pd3dDevice->CreateCommittedResource(
 		&heapProps, D3D12_HEAP_FLAG_NONE,
@@ -302,7 +303,6 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	const int MAX_BONES = 256;
 
-	// 1) CPU 배열 준비
 	XMFLOAT4X4 identity;
 	XMStoreFloat4x4(&identity, XMMatrixIdentity());
 	std::vector<XMFLOAT4X4> defaultBones(MAX_BONES, identity);
@@ -310,14 +310,12 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	UINT cbSize = sizeof(XMFLOAT4X4) * MAX_BONES;
 	cbSize = (cbSize + 255) & ~255;  // 256바이트 정렬
 
-	// 2) 기존 것이 있다면 제거
 	if (m_pDefaultBoneCB)
 	{
 		m_pDefaultBoneCB->Release();
 		m_pDefaultBoneCB = nullptr;
 	}
 
-	// 3) 업로드 힙에 상수버퍼 리소스 생성
 	D3D12_HEAP_PROPERTIES boneHeapProps = {};
 	boneHeapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
 	boneHeapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
@@ -353,7 +351,6 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	}
 	else
 	{
-		// 4) 초기 데이터 업로드 (전부 identity)
 		void* pBone = nullptr;
 		m_pDefaultBoneCB->Map(0, nullptr, &pBone);
 		memcpy(pBone, defaultBones.data(), sizeof(XMFLOAT4X4) * MAX_BONES);
@@ -361,7 +358,49 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 
 		OutputDebugStringA("[TankScene] DefaultBoneCB created.\n");
 	}
+
+	//=====================================================================
+	// 7) UnityChan 애니메이션(JUMP00) 로드 & Animator에 등록 + 재생
+	//=====================================================================
+	{
+		AnimationClip jumpClip;
+
+		// 시그니처:
+		// bool CMesh::LoadAnimationFromFBX(const char* filename,
+		//                                  const std::string& clipName,
+		//                                  AnimationClip& outClip,
+		//                                  float timeScale);
+		bool animLoaded = mesh->LoadAnimationFromFBX(
+			"Models/unitychan_JUMP00.fbx", // 애니 FBX 경로
+			"Jump",                        // 클립 이름
+			jumpClip,                      // 결과 클립
+			1.0f                           // timeScale (필요하면 조정)
+		);
+
+		if (animLoaded)
+		{
+			// 혹시 로더에서 name 안 채우면 안전하게 한 번 더
+			jumpClip.name = "Jump";
+
+			CAnimator* pAnimator = mesh->EnsureAnimator();
+			if (pAnimator)
+			{
+				pAnimator->AddClip(jumpClip);
+
+				// 바로 이 자리에서 재생시킬 거면:
+				pAnimator->Play("Jump", true, 0.0f);
+
+				// 만약 Player::SetDefaultAnimation("Jump", ...) 를 써서
+				// 자동 Play 하게 할 거면 여기 Play는 빼도 됨.
+			}
+		}
+		else
+		{
+			OutputDebugStringA("[TankScene] Failed to load animation: Models/unitychan_JUMP00.fbx\n");
+		}
+	}
 }
+
 
 void CTankScene::ReleaseObjects()
 {
