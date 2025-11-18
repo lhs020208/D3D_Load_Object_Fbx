@@ -33,6 +33,7 @@
 #include <functional>
 #include <unordered_map>
 #include <set>
+#include <algorithm>
 using namespace std;
 
 #include <d3d12.h>

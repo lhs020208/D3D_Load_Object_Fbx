@@ -54,6 +54,8 @@ struct AnimationClip
 
     // 이름 → 본트랙 인덱스 (필수는 아니지만 편의용)
     std::unordered_map<std::string, int> boneNameToTrack;
+
+    void Evaluate(float timeSec, std::vector<XMFLOAT4X4>& outLocalTransforms) const;
 };
 
 struct Bone

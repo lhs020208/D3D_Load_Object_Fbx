@@ -57,6 +57,9 @@
     <ClInclude Include="AssetManager.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="Animator.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -90,6 +93,15 @@
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="AssetManager.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Animator.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="AnimatorData.h">
+      <Filter>헤더 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="AnimatorData.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>
