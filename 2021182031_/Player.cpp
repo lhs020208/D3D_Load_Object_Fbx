@@ -5,6 +5,7 @@
 #include "stdafx.h"
 #include "Player.h"
 #include "Shader.h"
+#include "Animator.h"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // CPlayer
@@ -234,6 +235,53 @@ void CPlayer::reset()
 	m_fRoll = 0.0f;
 }
 
+void CPlayer::SetDefaultAnimation(const std::string& clipName,
+	float playbackSpeed,
+	bool loop,
+	bool autoPlay)
+{
+	m_strDefaultAnimClip = clipName;
+	m_fAnimPlaybackSpeed = playbackSpeed;
+	m_bAnimLoop = loop;
+	m_bAnimAutoPlay = autoPlay;
+	m_bAnimInitialized = false; // 다시 초기화해서 다음 Animate에서 Play
+}
+
+void CPlayer::Animate(float fElapsedTime)
+{
+	// 1) 아직 기본 클립을 재생한 적이 없고, 자동 재생이 켜져 있으며, 이름이 설정돼 있으면
+	if (!m_bAnimInitialized && m_bAnimAutoPlay && !m_strDefaultAnimClip.empty())
+	{
+		for (int i = 0; i < m_nMeshes; ++i)
+		{
+			CMesh* pMesh = m_ppMeshes[i];
+			if (!pMesh || !pMesh->IsSkinnedMesh())
+				continue;
+
+			CAnimator* pAnimator = pMesh->EnsureAnimator();
+			if (!pAnimator) continue;
+
+			// 클립이 실제로 존재하는 경우에만 재생
+			if (pAnimator->HasClip(m_strDefaultAnimClip))
+			{
+				// (loop, startTime=0.0f)
+				pAnimator->Play(m_strDefaultAnimClip, m_bAnimLoop, 0.0f);
+			}
+		}
+
+		m_bAnimInitialized = true;
+	}
+
+	// 2) 재생 속도를 반영한 dt로 본 애니메이션 업데이트
+	float animDt = fElapsedTime * m_fAnimPlaybackSpeed;
+
+	// CGameObject::Animate 안에서
+	//  - 각 Mesh의 Animator->Update(animDt)
+	//  - 최종 본행렬 계산 + CMesh::UpdateBoneTransformsOnGPU(...)
+	// 를 수행한다고 가정.
+	CGameObject::Animate(animDt);
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 CPersonPlayer::CPersonPlayer(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList* pd3dCommandList, ID3D12RootSignature* pd3dGraphicsRootSignature)
 {
@@ -258,8 +306,10 @@ void CPersonPlayer::OnPrepareRender()
 
 void CPersonPlayer::Animate(float fElapsedTime)
 {
-	CGameObject::Animate(fElapsedTime);
+	// 1) 플레이어의 본 애니메이션 처리 (클립 재생 + 본 행렬 계산/업로드)
+	CPlayer::Animate(fElapsedTime);
 
+	// 2) 기존 이동 로직
 	XMFLOAT3 look = GetLook();
 	XMFLOAT3 right = GetRight();
 	XMFLOAT3 moveVec = { 0.0f, 0.0f, 0.0f };
@@ -276,7 +326,6 @@ void CPersonPlayer::Animate(float fElapsedTime)
 	SetPosition(now_pos.x + moveVec.x, now_pos.y, now_pos.z + moveVec.z);
 
 	CPersonPlayer::OnPrepareRender();
-
 	UpdateBoundingBox();
 }
 
@@ -329,3 +378,4 @@ CCamera* CPersonPlayer::ChangeCamera(DWORD nNewCameraMode, float fTimeElapsed)
 
 	return(m_pCamera);
 }
+

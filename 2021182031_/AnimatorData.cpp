@@ -1,115 +1,144 @@
+// AnimatorData.cpp
 #include "stdafx.h"
 #include "AnimatorData.h"
 
 using namespace DirectX;
 
-// TRS → Matrix 조합 헬퍼
-static inline void ComposeTRS(
-    const XMFLOAT3& T,
-    const XMFLOAT4& Q,
-    const XMFLOAT3& S,
+static void BuildTRSMatrix(
+    const XMFLOAT3& t,
+    const XMFLOAT4& r,
+    const XMFLOAT3& s,
     XMFLOAT4X4& outM)
 {
-    XMVECTOR t = XMLoadFloat3(&T);
-    XMVECTOR q = XMLoadFloat4(&Q);
-    XMVECTOR s = XMLoadFloat3(&S);
+    XMVECTOR trans = XMLoadFloat3(&t);
+    XMVECTOR rot = XMLoadFloat4(&r);
+    XMVECTOR scale = XMLoadFloat3(&s);
 
-    q = XMQuaternionNormalize(q);
+    XMMATRIX mS = XMMatrixScalingFromVector(scale);
+    XMMATRIX mR = XMMatrixRotationQuaternion(rot);
+    XMMATRIX mT = XMMatrixTranslationFromVector(trans);
 
-    XMMATRIX M =
-        XMMatrixScalingFromVector(s) *
-        XMMatrixRotationQuaternion(q) *
-        XMMatrixTranslationFromVector(t);
-
+    // (Scale * Rotate * Translate) 순서
+    XMMATRIX M = mS * mR * mT;
     XMStoreFloat4x4(&outM, M);
 }
 
-// timeSec 시점의 로컬 본 행렬들 계산
-void AnimationClip::Evaluate(float timeSec, std::vector<XMFLOAT4X4>& outLocalTransforms) const
+// 한 본의 키프레임 리스트에서 t에 해당하는 TRS를 보간해서 구함
+static void SampleBoneTrack(
+    const std::vector<Keyframe>& keys,
+    float timeSec,
+    XMFLOAT3& outT,
+    XMFLOAT4& outR,
+    XMFLOAT3& outS)
 {
-    const size_t boneCount = boneTracks.size();
-    if (outLocalTransforms.size() < boneCount)
-        outLocalTransforms.resize(boneCount);
-
-    // 시간 클램프 (0 ~ duration)
-    if (duration > 0.0f)
+    const size_t keyCount = keys.size();
+    if (keyCount == 0)
     {
-        if (timeSec < 0.0f)       timeSec = 0.0f;
-        else if (timeSec > duration) timeSec = duration;
+        // 키가 없으면 단위 TRS
+        outT = XMFLOAT3(0.f, 0.f, 0.f);
+        outR = XMFLOAT4(0.f, 0.f, 0.f, 1.f);
+        outS = XMFLOAT3(1.f, 1.f, 1.f);
+        return;
     }
 
-    XMFLOAT4X4 identity;
-    XMStoreFloat4x4(&identity, XMMatrixIdentity());
+    if (keyCount == 1)
+    {
+        // 키가 하나면 그대로 사용
+        outT = keys[0].translation;
+        outR = keys[0].rotationQuat;
+        outS = keys[0].scale;
+        return;
+    }
 
-    for (size_t i = 0; i < boneCount; ++i)
+    // timeSec을 키 범위 안으로 clamp
+    float startTime = keys.front().timeSec;
+    float endTime = keys.back().timeSec;
+    if (timeSec <= startTime) timeSec = startTime;
+    if (timeSec >= endTime)   timeSec = endTime;
+
+    // timeSec이 들어갈 구간 [k0, k1]을 찾기
+    size_t k1 = 1;
+    for (; k1 < keyCount; ++k1)
+    {
+        if (keys[k1].timeSec >= timeSec)
+            break;
+    }
+    if (k1 >= keyCount)
+    {
+        // safety: 마지막 키 사용
+        outT = keys.back().translation;
+        outR = keys.back().rotationQuat;
+        outS = keys.back().scale;
+        return;
+    }
+
+    size_t k0 = k1 - 1;
+    const Keyframe& key0 = keys[k0];
+    const Keyframe& key1 = keys[k1];
+
+    float t0 = key0.timeSec;
+    float t1 = key1.timeSec;
+    float span = (t1 - t0);
+    float alpha = (span > 0.0f) ? ((timeSec - t0) / span) : 0.0f;
+
+    // 위치 / 스케일: 선형보간
+    XMVECTOR T0 = XMLoadFloat3(&key0.translation);
+    XMVECTOR T1 = XMLoadFloat3(&key1.translation);
+    XMVECTOR S0 = XMLoadFloat3(&key0.scale);
+    XMVECTOR S1 = XMLoadFloat3(&key1.scale);
+
+    XMVECTOR T = XMVectorLerp(T0, T1, alpha);
+    XMVECTOR S = XMVectorLerp(S0, S1, alpha);
+
+    XMStoreFloat3(&outT, T);
+    XMStoreFloat3(&outS, S);
+
+    // 회전: 쿼터니언 SLERP
+    XMVECTOR R0 = XMLoadFloat4(&key0.rotationQuat);
+    XMVECTOR R1 = XMLoadFloat4(&key1.rotationQuat);
+    XMVECTOR R = XMQuaternionSlerp(R0, R1, alpha);
+    R = XMQuaternionNormalize(R);
+    XMStoreFloat4(&outR, R);
+}
+
+// ============================================================
+// AnimationClip::Evaluate
+//   - timeSec 시각에서 각 본의 로컬 행렬을 outLocalTransforms에 채움
+// ============================================================
+void AnimationClip::Evaluate(float timeSec, std::vector<XMFLOAT4X4>& outLocalTransforms) const
+{
+    const size_t trackCount = boneTracks.size();
+    if (trackCount == 0)
+    {
+        outLocalTransforms.clear();
+        return;
+    }
+
+    // 출력 버퍼 크기 보정
+    if (outLocalTransforms.size() < trackCount)
+        outLocalTransforms.resize(trackCount);
+
+    for (size_t i = 0; i < trackCount; ++i)
     {
         const BoneKeyframes& track = boneTracks[i];
-        const auto& keys = track.keyframes;
 
-        // 키가 없으면 identity
-        if (keys.empty())
+        XMFLOAT3 t;
+        XMFLOAT4 r;
+        XMFLOAT3 s;
+
+        if (track.keyframes.empty())
         {
-            outLocalTransforms[i] = identity;
-            continue;
+            // 이 본은 키가 없으면 기본 포즈(단위 행렬)
+            t = XMFLOAT3(0.f, 0.f, 0.f);
+            r = XMFLOAT4(0.f, 0.f, 0.f, 1.f);
+            s = XMFLOAT3(1.f, 1.f, 1.f);
+        }
+        else
+        {
+            // 키프레임 보간
+            SampleBoneTrack(track.keyframes, timeSec, t, r, s);
         }
 
-        // 키가 하나 뿐이거나, 첫 키 이전 → 첫 키 사용
-        if (keys.size() == 1 || timeSec <= keys.front().timeSec)
-        {
-            ComposeTRS(keys.front().translation,
-                keys.front().rotationQuat,
-                keys.front().scale,
-                outLocalTransforms[i]);
-            continue;
-        }
-
-        // 마지막 키 이후 → 마지막 키 사용
-        if (timeSec >= keys.back().timeSec)
-        {
-            ComposeTRS(keys.back().translation,
-                keys.back().rotationQuat,
-                keys.back().scale,
-                outLocalTransforms[i]);
-            continue;
-        }
-
-        // 사이에 있는 구간 찾기 (간단히 선형 탐색)
-        size_t k1 = 1;
-        while (k1 < keys.size() && keys[k1].timeSec < timeSec)
-            ++k1;
-        size_t k0 = k1 - 1;
-
-        const Keyframe& kf0 = keys[k0];
-        const Keyframe& kf1 = keys[k1];
-
-        float t0 = kf0.timeSec;
-        float t1 = kf1.timeSec;
-        float denom = (t1 - t0);
-        float alpha = (denom > 0.0f) ? (timeSec - t0) / denom : 0.0f;
-
-        // 위치/스케일: 선형 보간
-        XMVECTOR T0 = XMLoadFloat3(&kf0.translation);
-        XMVECTOR T1 = XMLoadFloat3(&kf1.translation);
-        XMVECTOR S0 = XMLoadFloat3(&kf0.scale);
-        XMVECTOR S1 = XMLoadFloat3(&kf1.scale);
-
-        XMVECTOR T = XMVectorLerp(T0, T1, alpha);
-        XMVECTOR S = XMVectorLerp(S0, S1, alpha);
-
-        // 회전: 쿼터니언 SLERP
-        XMVECTOR R0 = XMLoadFloat4(&kf0.rotationQuat);
-        XMVECTOR R1 = XMLoadFloat4(&kf1.rotationQuat);
-        R0 = XMQuaternionNormalize(R0);
-        R1 = XMQuaternionNormalize(R1);
-
-        XMVECTOR R = XMQuaternionSlerp(R0, R1, alpha);
-
-        XMFLOAT3 outT, outS;
-        XMFLOAT4 outR;
-        XMStoreFloat3(&outT, T);
-        XMStoreFloat3(&outS, S);
-        XMStoreFloat4(&outR, R);
-
-        ComposeTRS(outT, outR, outS, outLocalTransforms[i]);
+        BuildTRSMatrix(t, r, s, outLocalTransforms[i]);
     }
 }
