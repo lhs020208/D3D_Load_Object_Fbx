@@ -196,25 +196,29 @@ inline float NDFBlinnPhongNormalizedTerm(float NdotH, float fRoughnessToSpecPowe
 
 float4 PSLighting(VS_OUTPUT input) : SV_TARGET
 {
-    float3 gfLightDirection = float3(gfLightDirectionX, gfLightDirectionY, gfLightDirectionZ);
-    float3 gf3LightColor = float3(gf3LightColorX, gf3LightColorY, gf3LightColorZ);
-    
+    // 라이트/색 조합
+    float3 lightDir = normalize(float3(gfLightDirectionX, gfLightDirectionY, gfLightDirectionZ));
+    float3 lightColor = float3(gf3LightColorX, gf3LightColorY, gf3LightColorZ);
+
+    // 월드 공간에서의 법선/벡터들
     float3 N = normalize(input.normalW);
-    float3 L = normalize(-gfLightDirection);
+    float3 L = normalize(-lightDir);
     float3 V = normalize(gf3CameraPosition - input.positionW);
     float3 H = normalize(L + V);
 
     float NdotL = saturate(dot(N, L));
     float NdotH = saturate(dot(N, H));
 
+    // 단순 조명 모델 (ambient + diffuse + specular)
     float3 ambient = gf3AmbientLightColor * gf3ObjectColor;
-    float3 diffuse = gf3LightColor * gf3ObjectColor * NdotL;
+    float3 diffuse = lightColor * gf3ObjectColor * NdotL;
     float3 specular = gf3SpecularColor * pow(NdotH, 4.0f);
 
     float3 finalLight = ambient + diffuse + specular;
-    
-    float4 texColor = gDiffuseMap.Sample(gSampler, input.uv);
-    
-    return float4(texColor.rgb * finalLight, texColor.a);
 
+    // 텍스처 샘플링
+    float4 texColor = gDiffuseMap.Sample(gSampler, input.uv);
+
+    return float4(texColor.rgb * finalLight, texColor.a);
 }
+
