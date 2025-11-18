@@ -355,12 +355,14 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                 sm.uvs.push_back(uv);
 
                 // 스키닝 기본값
-                sm.boneIndices.push_back(XMUINT4(0, 0, 0, 0));
-                sm.boneWeights.push_back(XMFLOAT4(1, 0, 0, 0));
+                //sm.boneIndices.push_back(XMUINT4(0, 0, 0, 0));
+                //sm.boneWeights.push_back(XMFLOAT4(1, 0, 0, 0));
 
                 sm.indices.push_back((UINT)sm.indices.size());
             }
         }
+
+        FillSkinWeights(mesh, sm);
 
         m_SubMeshes.push_back(sm);
     }
@@ -898,4 +900,175 @@ void CMesh::UpdateBoneTransformsOnGPU(ID3D12GraphicsCommandList* cmdList,
 
     // 전체 범위를 썼으므로 writtenRange는 nullptr로 두어도 됨
     m_pd3dcbBoneTransforms->Unmap(0, nullptr);
+}
+
+void CMesh::FillSkinWeights(FbxMesh* mesh, SubMesh& sm)
+{
+    if (!mesh) return;
+
+    const int cpCount = mesh->GetControlPointsCount();
+    if (cpCount <= 0) return;
+
+    // 기존 내용 초기화 (혹시라도 다른 값이 들어있었다면)
+    sm.boneIndices.clear();
+    sm.boneWeights.clear();
+
+    // -------------------------------------------------------------------------
+    // 1) ControlPoint(정점)마다 어떤 Bone이 몇 %로 영향을 주는지 수집
+    // -------------------------------------------------------------------------
+    // cpInfluences[cpIndex] = { (boneIndex, weight), ... }
+    std::vector<std::vector<std::pair<int, double>>> cpInfluences(cpCount);
+
+    const int skinCount = mesh->GetDeformerCount(FbxDeformer::eSkin);
+    for (int s = 0; s < skinCount; ++s)
+    {
+        FbxSkin* skin = FbxCast<FbxSkin>(mesh->GetDeformer(s, FbxDeformer::eSkin));
+        if (!skin) continue;
+
+        const int clusterCount = skin->GetClusterCount();
+        for (int c = 0; c < clusterCount; ++c)
+        {
+            FbxCluster* cluster = skin->GetCluster(c);
+            if (!cluster) continue;
+
+            FbxNode* linkNode = cluster->GetLink(); // 이 클러스터가 가리키는 본 노드
+            if (!linkNode) continue;
+
+            const char* boneName = linkNode->GetName();
+            auto it = m_BoneNameToIndex.find(boneName);
+            if (it == m_BoneNameToIndex.end())
+                continue; // 이 본은 스켈레톤(Bone 배열)에 없음
+
+            const int boneIndex = it->second;
+
+            const int* indices = cluster->GetControlPointIndices();
+            const double* weights = cluster->GetControlPointWeights();
+            const int    indexCount = cluster->GetControlPointIndicesCount();
+
+            for (int i = 0; i < indexCount; ++i)
+            {
+                int cpIdx = indices[i];
+                if (cpIdx < 0 || cpIdx >= cpCount) continue;
+
+                double w = weights[i];
+                if (w <= 0.0) continue;
+
+                cpInfluences[cpIdx].emplace_back(boneIndex, w);
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // 2) 각 ControlPoint마다 최대 4개까지 영향이 큰 본만 유지하고, 가중치 정규화
+    // -------------------------------------------------------------------------
+    std::vector<XMUINT4>  cpBones(cpCount, XMUINT4(0, 0, 0, 0));
+    std::vector<XMFLOAT4> cpWeights(cpCount, XMFLOAT4(1, 0, 0, 0)); // 기본값: 본 0에 100%
+
+    for (int cp = 0; cp < cpCount; ++cp)
+    {
+        auto& infl = cpInfluences[cp];
+        if (infl.empty())
+        {
+            // 스킨 정보가 전혀 없는 정점: 기본값 유지 (Bone 0, weight 1)
+            continue;
+        }
+
+        // weight 내림차순 정렬
+        std::sort(infl.begin(), infl.end(),
+            [](const std::pair<int, double>& a, const std::pair<int, double>& b)
+            {
+                return a.second > b.second;
+            });
+
+        int useCount = (infl.size() < 4) ? (int)infl.size() : 4;
+
+        double sum = 0.0;
+        for (int i = 0; i < useCount; ++i)
+            sum += infl[i].second;
+
+        if (sum <= 0.0)
+            continue;
+
+        XMUINT4 bi(0, 0, 0, 0);
+        XMFLOAT4 bw(0, 0, 0, 0);
+
+        for (int i = 0; i < useCount; ++i)
+        {
+            const int   b = infl[i].first;
+            const float w = (float)(infl[i].second / sum); // 정규화
+
+            switch (i)
+            {
+            case 0:
+                bi.x = b; bw.x = w; break;
+            case 1:
+                bi.y = b; bw.y = w; break;
+            case 2:
+                bi.z = b; bw.z = w; break;
+            case 3:
+                bi.w = b; bw.w = w; break;
+            }
+        }
+
+        // 혹시 합이 1이 안 될 수도 있으니, 마지막에 한번 보정(선택사항)
+        float totalW = bw.x + bw.y + bw.z + bw.w;
+        if (totalW > 0.0f && fabsf(totalW - 1.0f) > 1e-3f)
+        {
+            bw.x /= totalW;
+            bw.y /= totalW;
+            bw.z /= totalW;
+            bw.w /= totalW;
+        }
+
+        cpBones[cp] = bi;
+        cpWeights[cp] = bw;
+    }
+
+    // -------------------------------------------------------------------------
+    // 3) polygon 순회를 다시 하면서, SubMesh 정점 순서에 맞춰 boneIndices / boneWeights push
+    //    (positions / normals / uvs를 채울 때와 동일한 순서로 순회해야 한다)
+    // -------------------------------------------------------------------------
+    const int polyCount = mesh->GetPolygonCount();
+    if (polyCount <= 0) return;
+
+    // xform / flip은 geometry 만들 때와 같은 기준으로 다시 계산
+    FbxNode* node = mesh->GetNode();
+    FbxAMatrix global = node ? node->EvaluateGlobalTransform() : FbxAMatrix();
+
+    FbxAMatrix geo;
+    if (node)
+    {
+        geo.SetT(node->GetGeometricTranslation(FbxNode::eSourcePivot));
+        geo.SetR(node->GetGeometricRotation(FbxNode::eSourcePivot));
+        geo.SetS(node->GetGeometricScaling(FbxNode::eSourcePivot));
+    }
+    FbxAMatrix xform = global * geo;
+    bool flip = (xform.Determinant() < 0);
+
+    sm.boneIndices.reserve(sm.positions.size());
+    sm.boneWeights.reserve(sm.positions.size());
+
+    for (int p = 0; p < polyCount; ++p)
+    {
+        int order[3] = { 0, 1, 2 };
+        if (flip) std::swap(order[1], order[2]);
+
+        for (int i = 0; i < 3; ++i)
+        {
+            int v = order[i];
+            int cpIdx = mesh->GetPolygonVertex(p, v);
+            if (cpIdx < 0 || cpIdx >= cpCount)
+            {
+                // 잘못된 인덱스면 안전하게 기본값 사용
+                sm.boneIndices.push_back(XMUINT4(0, 0, 0, 0));
+                sm.boneWeights.push_back(XMFLOAT4(1, 0, 0, 0));
+                continue;
+            }
+
+            sm.boneIndices.push_back(cpBones[cpIdx]);
+            sm.boneWeights.push_back(cpWeights[cpIdx]);
+        }
+    }
+
+    // 여기까지 오면 sm.positions.size() == sm.boneIndices.size() == sm.boneWeights.size() 가 되는 것이 정상
 }

@@ -6,6 +6,7 @@
 #include "AnimatorData.h"
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
+//class FbxMesh;
 class CVertex
 {
 public:
@@ -69,6 +70,7 @@ struct SubMesh
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 class CAnimator;
+
 class CMesh
 {
 public:
@@ -124,6 +126,9 @@ protected:
 	UINT							m_nSrvDescriptorIncrementSize = 0;
 	UINT							m_nTextureRootParameterIndex = 5;  // t0이 RootParam5라고 가정
 	ID3D12Device*					m_pd3dDevice = nullptr;
+
+	// FBX Skin 정보를 SubMesh의 boneIndices / boneWeights에 채우는 헬퍼
+	void FillSkinWeights(FbxMesh* mesh, SubMesh& sm);
 
 public:
 	virtual void Render(ID3D12GraphicsCommandList *pd3dCommandList);
