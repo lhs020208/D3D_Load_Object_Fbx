@@ -179,4 +179,18 @@ public:
 
 	bool IsSkinnedMesh() const { return m_bSkinnedMesh; }
 	bool HasBoneCB() const { return (m_pd3dcbBoneTransforms != nullptr); }
+
+	// ------------------------------------------------------------
+	//  애니메이션 FBX 파일 하나에서 AnimationClip 생성
+	//  - filename : 애니메이션 FBX 경로 (예: "Models/unitychan_JUMP00.fbx")
+	//  - clipName : AnimationClip.name 에 들어갈 이름 (예: "Jump")
+	//               빈 문자열이면 FBX AnimStack 이름을 사용하도록 구현 예정
+	//  - outClip  : FBX에서 추출한 키프레임/트랙/길이 정보를 채워서 반환
+	//  - timeScale: FBX 시간을 초 단위로 바꾼 뒤 추가로 곱해줄 배율(기본 1.0f)
+	//  반환값     : 로딩 성공 시 true, 실패 시 false
+	// ------------------------------------------------------------
+	bool LoadAnimationFromFBX(const char* filename,
+		const std::string& clipName,
+		AnimationClip& outClip,
+		float timeScale = 1.0f);
 };

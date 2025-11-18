@@ -72,4 +72,9 @@ private:
     // 내부 버퍼 (로컬/글로벌 트랜스폼 계산 시 사용)
     std::vector<XMFLOAT4X4> m_LocalPose;    // 각 본의 로컬 행렬
     std::vector<XMFLOAT4X4> m_GlobalPose;   // 각 본의 글로벌 행렬
+
+    // Animator.h (선언만, 구현은 이후 단계)
+    bool LoadClipFromFBXAndAdd(const char* filename,
+        const std::string& clipName,
+        float timeScale = 1.0f);
 };
