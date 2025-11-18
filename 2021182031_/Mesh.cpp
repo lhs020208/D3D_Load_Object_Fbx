@@ -8,6 +8,128 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
+namespace
+{
+    // 한 노드(=본)에 대한 모든 키 타임을 모은다.
+    void CollectKeyTimes(FbxNode* node, FbxAnimLayer* layer, std::set<FbxTime>& outTimes)
+    {
+        auto addCurve = [&](FbxAnimCurve* curve)
+            {
+                if (!curve) return;
+                int keyCount = curve->KeyGetCount();
+                for (int i = 0; i < keyCount; ++i)
+                {
+                    outTimes.insert(curve->KeyGetTime(i));
+                }
+            };
+
+        addCurve(node->LclTranslation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_X));
+        addCurve(node->LclTranslation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Y));
+        addCurve(node->LclTranslation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Z));
+
+        addCurve(node->LclRotation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_X));
+        addCurve(node->LclRotation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Y));
+        addCurve(node->LclRotation.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Z));
+
+        addCurve(node->LclScaling.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_X));
+        addCurve(node->LclScaling.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Y));
+        addCurve(node->LclScaling.GetCurve(layer, FBXSDK_CURVENODE_COMPONENT_Z));
+    }
+
+    // 하나의 본 노드에 대해 BoneKeyframes 를 채운다.
+    void ExtractBoneTrack(
+        FbxNode* node,
+        int boneIndex,
+        FbxAnimLayer* layer,
+        const FbxTimeSpan& timeSpan,
+        float timeScale,
+        AnimationClip& clip)
+    {
+        if (!node || boneIndex < 0) return;
+
+        std::set<FbxTime> keyTimes;
+        CollectKeyTimes(node, layer, keyTimes);
+
+        if (keyTimes.empty())
+            return; // 이 본에 대한 키가 없음
+
+        BoneKeyframes& track = clip.boneTracks[boneIndex];
+
+        // 시작 시간을 0초로 두기 위해 기준값을 빼준다.
+        const double startSec = timeSpan.GetStart().GetSecondDouble();
+
+        for (const FbxTime& t : keyTimes)
+        {
+            if (t < timeSpan.GetStart() || t > timeSpan.GetStop())
+                continue;
+
+            FbxAMatrix localM = node->EvaluateLocalTransform(t);
+            FbxVector4 T = localM.GetT();
+            FbxQuaternion Q = localM.GetQ();
+            FbxVector4 S = localM.GetS();
+
+            Keyframe k;
+            // FBX 내부 타임 모드와 상관 없이 GetSecondDouble() 이 초 단위를 돌려준다.
+            double sec = t.GetSecondDouble() - startSec;
+            k.timeSec = static_cast<float>(sec * timeScale);
+
+            k.translation = XMFLOAT3(
+                static_cast<float>(T[0]),
+                static_cast<float>(T[1]),
+                static_cast<float>(T[2]));
+
+            k.rotationQuat = XMFLOAT4(
+                static_cast<float>(Q[0]),
+                static_cast<float>(Q[1]),
+                static_cast<float>(Q[2]),
+                static_cast<float>(Q[3]));
+
+            k.scale = XMFLOAT3(
+                static_cast<float>(S[0]),
+                static_cast<float>(S[1]),
+                static_cast<float>(S[2]));
+
+            track.keyframes.push_back(k);
+        }
+
+        // 혹시라도 타임이 뒤섞였을 경우를 대비해 정렬
+        std::sort(track.keyframes.begin(), track.keyframes.end(),
+            [](const Keyframe& a, const Keyframe& b)
+            {
+                return a.timeSec < b.timeSec;
+            });
+    }
+
+    // 씬 트리 전체를 돌며 본 이름과 일치하는 노드에서 트랙을 뽑는다.
+    void TraverseAndExtractTracks(
+        FbxNode* node,
+        FbxAnimLayer* layer,
+        const std::unordered_map<std::string, int>& boneNameToIndex,
+        const FbxTimeSpan& timeSpan,
+        float timeScale,
+        AnimationClip& clip)
+    {
+        if (!node) return;
+
+        const char* nodeNameC = node->GetName();
+        std::string nodeName = nodeNameC ? nodeNameC : "";
+
+        auto it = boneNameToIndex.find(nodeName);
+        if (it != boneNameToIndex.end())
+        {
+            int boneIndex = it->second;
+            ExtractBoneTrack(node, boneIndex, layer, timeSpan, timeScale, clip);
+        }
+
+        int childCount = node->GetChildCount();
+        for (int i = 0; i < childCount; ++i)
+        {
+            TraverseAndExtractTracks(node->GetChild(i), layer,
+                boneNameToIndex, timeSpan, timeScale, clip);
+        }
+    }
+} // anonymous namespace
+
 CPolygon::CPolygon(int nVertices)
 {
 	m_nVertices = nVertices;
@@ -1071,4 +1193,103 @@ void CMesh::FillSkinWeights(FbxMesh* mesh, SubMesh& sm)
     }
 
     // 여기까지 오면 sm.positions.size() == sm.boneIndices.size() == sm.boneWeights.size() 가 되는 것이 정상
+}
+
+//----------------------------------------------------------------------------
+// 애니메이션 FBX → AnimationClip 로드
+//----------------------------------------------------------------------------
+bool CMesh::LoadAnimationFromFBX(
+    const char* filename,
+    const std::string& clipName,
+    AnimationClip& outClip,
+    float timeScale)
+{
+    if (!filename) return false;
+    if (m_Bones.empty())
+    {
+        OutputDebugStringA("[CMesh::LoadAnimationFromFBX] Skeleton is empty.\n");
+        return false;
+    }
+
+    // FBX 매니저/씬 생성
+    FbxManager* pManager = FbxManager::Create();
+    FbxIOSettings* ios = FbxIOSettings::Create(pManager, IOSROOT);
+    pManager->SetIOSettings(ios);
+
+    FbxImporter* importer = FbxImporter::Create(pManager, "");
+    if (!importer->Initialize(filename, -1, pManager->GetIOSettings()))
+    {
+        OutputDebugStringA("[CMesh::LoadAnimationFromFBX] Importer Initialize failed.\n");
+        importer->Destroy();
+        pManager->Destroy();
+        return false;
+    }
+
+    FbxScene* pScene = FbxScene::Create(pManager, "AnimScene");
+    importer->Import(pScene);
+    importer->Destroy();
+
+    // 좌표계/단위는 모델 로딩 때와 동일하게 맞춰준다.
+    FbxAxisSystem::DirectX.ConvertScene(pScene);
+    FbxSystemUnit::m.ConvertScene(pScene);
+
+    // AnimStack / AnimLayer 얻기
+    FbxAnimStack* pStack = pScene->GetCurrentAnimationStack();
+    if (!pStack && pScene->GetSrcObjectCount<FbxAnimStack>() > 0)
+    {
+        pStack = pScene->GetSrcObject<FbxAnimStack>(0);
+    }
+    if (!pStack)
+    {
+        OutputDebugStringA("[CMesh::LoadAnimationFromFBX] No AnimStack.\n");
+        pScene->Destroy();
+        pManager->Destroy();
+        return false;
+    }
+
+    FbxTimeSpan timeSpan = pStack->GetLocalTimeSpan();
+
+    FbxAnimLayer* pLayer = pStack->GetMember<FbxAnimLayer>(0);
+    if (!pLayer)
+    {
+        OutputDebugStringA("[CMesh::LoadAnimationFromFBX] No AnimLayer.\n");
+        pScene->Destroy();
+        pManager->Destroy();
+        return false;
+    }
+
+    // 클립 기본 정보 세팅
+    outClip.name = clipName.empty() ? std::string(pStack->GetName()) : clipName;
+
+    double startSec = timeSpan.GetStart().GetSecondDouble();
+    double endSec = timeSpan.GetStop().GetSecondDouble();
+    outClip.duration = static_cast<float>((endSec - startSec) * timeScale);
+
+    outClip.boneTracks.clear();
+    outClip.boneNameToTrack.clear();
+    outClip.boneTracks.resize(m_Bones.size());
+
+    // 본 이름/인덱스에 맞춰 트랙 기본값 초기화
+    for (size_t i = 0; i < m_Bones.size(); ++i)
+    {
+        BoneKeyframes& track = outClip.boneTracks[i];
+        track.boneIndex = static_cast<int>(i);
+        track.boneName = m_Bones[i].name;
+        outClip.boneNameToTrack[track.boneName] = static_cast<int>(i);
+    }
+
+    // 씬 트리 순회하며, 우리 스켈레톤 이름과 같은 노드에서 키 뽑기
+    FbxNode* pRoot = pScene->GetRootNode();
+    if (pRoot)
+    {
+        TraverseAndExtractTracks(pRoot, pLayer,
+            m_BoneNameToIndex,
+            timeSpan, timeScale,
+            outClip);
+    }
+
+    pScene->Destroy();
+    pManager->Destroy();
+
+    return true;
 }
