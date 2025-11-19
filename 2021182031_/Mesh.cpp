@@ -334,43 +334,60 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
     ExtractBones(scene->GetRootNode(), -1);
 
     // -----------------------------------------------------------------------------
-// 4-1) TODO: FBX Skin/Cluster에서 실제 inverse bind pose 채우기
-//           - 각 FbxMesh의 FbxSkin / FbxCluster를 순회하면서
-//             cluster.GetLink() (본 노드) 이름을 통해 m_Bones 인덱스를 찾고,
-//             cluster.GetTransformMatrix() / GetTransformLinkMatrix()를 사용해
-//             model→bone 공간의 inverse bind 행렬을 계산해서
-//             m_Bones[boneIndex].offsetMatrix에 써 넣는다.
+// 4-1) FBX Skin/Cluster에서 inverse bind pose(offsetMatrix) 채우기
+//      - offsetMatrix = linkM.Inverse() * meshM
+//      - Animator에서 skinM = globalM * offsetMatrix 를 쓰므로
+//        skinnedPos = posL * (globalM * linkM^{-1} * meshM)
 // -----------------------------------------------------------------------------
-// 예시 스켈레톤 (구현은 이후 단계에서):
-// for (FbxMesh* mesh : meshes)
-// {
-//     int skinCount = mesh->GetDeformerCount(FbxDeformer::eSkin);
-//     for (int s = 0; s < skinCount; ++s)
-//     {
-//         FbxSkin* skin = (FbxSkin*)mesh->GetDeformer(s, FbxDeformer::eSkin);
-//         int clusterCount = skin->GetClusterCount();
-//         for (int c = 0; c < clusterCount; ++c)
-//         {
-//             FbxCluster* cluster = skin->GetCluster(c);
-//             FbxNode*    linkNode = cluster->GetLink(); // 본 노드
-//             if (!linkNode) continue;
-//
-//             const char* boneName = linkNode->GetName();
-//             auto it = m_BoneNameToIndex.find(boneName);
-//             if (it == m_BoneNameToIndex.end()) continue;
-//
-//             int boneIndex = it->second;
-//
-//             FbxAMatrix meshM, linkM;
-//             cluster->GetTransformMatrix(meshM);       // 메쉬 바인드 자세
-//             cluster->GetTransformLinkMatrix(linkM);   // 본 바인드 자세
-//
-//             // TODO: 여기서 meshM, linkM을 사용해서
-//             //       model→bone inverse bind를 계산하고
-//             //       m_Bones[boneIndex].offsetMatrix에 기록.
-//         }
-//     }
-// }
+    for (FbxMesh* m : meshes)
+    {
+        if (!m) continue;
+
+        int skinCount = m->GetDeformerCount(FbxDeformer::eSkin);
+        for (int s = 0; s < skinCount; ++s)
+        {
+            FbxSkin* skin = static_cast<FbxSkin*>(m->GetDeformer(s, FbxDeformer::eSkin));
+            if (!skin) continue;
+
+            int clusterCount = skin->GetClusterCount();
+            for (int c = 0; c < clusterCount; ++c)
+            {
+                FbxCluster* cluster = skin->GetCluster(c);
+                if (!cluster) continue;
+
+                FbxNode* linkNode = cluster->GetLink(); // 본 노드
+                if (!linkNode) continue;
+
+                const char* linkNameC = linkNode->GetName();
+                std::string linkName = linkNameC ? linkNameC : "";
+
+                auto it = m_BoneNameToIndex.find(linkName);
+                if (it == m_BoneNameToIndex.end()) continue;
+
+                int boneIndex = it->second;
+                if (boneIndex < 0 || boneIndex >= (int)m_Bones.size()) continue;
+
+                // 메쉬/본의 바인드 포즈 글로벌 행렬
+                FbxAMatrix meshM, linkM;
+                cluster->GetTransformMatrix(meshM);       // Mesh 바인드 글로벌
+                cluster->GetTransformLinkMatrix(linkM);   // Bone 바인드 글로벌
+
+                // FBX 행렬 → XMFLOAT4X4
+                FbxAMatrix offsetFbx = linkM.Inverse() * meshM; // ★ inverse bind
+                XMFLOAT4X4 offset{};
+                for (int r = 0; r < 4; ++r)
+                {
+                    for (int c2 = 0; c2 < 4; ++c2)
+                    {
+                        offset.m[r][c2] = static_cast<float>(offsetFbx.Get(r, c2));
+                    }
+                }
+
+                m_Bones[boneIndex].offsetMatrix = offset;
+            }
+        }
+    }
+
 
 
     // -----------------------------------------------------------------------------
