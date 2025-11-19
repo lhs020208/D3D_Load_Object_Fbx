@@ -346,16 +346,12 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
 
     ExtractBones(scene->GetRootNode(), -1);
 
-    // -----------------------------------------------------------------------------
-// 4-1) FBX Skin/Cluster에서 inverse bind pose(offsetMatrix) 채우기
-//      - offsetMatrix = linkM.Inverse() * meshM
-//      - Animator에서 skinM = globalM * offsetMatrix 를 쓰므로
-//        skinnedPos = posL * (globalM * linkM^{-1} * meshM)
-// -----------------------------------------------------------------------------
-        // -----------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // 4-1) FBX Skin/Cluster에서 inverse bind pose(offsetMatrix) 채우기
     //      - offsetMatrix = linkM.Inverse() * meshM
-    // -----------------------------------------------------------------------------
+    //      - Animator에서 skinM = globalM * offsetMatrix 를 쓰므로
+    //        skinnedPos = posL * (globalM * linkM^{-1} * meshM) 형태가 됨
+    // -------------------------------------------------------------------------
     for (FbxMesh* m : meshes)
     {
         if (!m) continue;
@@ -372,29 +368,37 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                 FbxCluster* cluster = skin->GetCluster(c);
                 if (!cluster) continue;
 
-                FbxNode* linkNode = cluster->GetLink(); // 본 노드
+                // 이 클러스터가 붙어 있는 본 노드
+                FbxNode* linkNode = cluster->GetLink();
                 if (!linkNode) continue;
 
                 const char* linkNameC = linkNode->GetName();
                 std::string linkName = linkNameC ? linkNameC : "";
 
+                // 우리 스켈레톤에서 본 인덱스 찾기
                 auto it = m_BoneNameToIndex.find(linkName);
                 if (it == m_BoneNameToIndex.end()) continue;
 
                 int boneIndex = it->second;
                 if (boneIndex < 0 || boneIndex >= (int)m_Bones.size()) continue;
 
-                // 바인드 포즈에서의 메쉬/본 글로벌 행렬
-                FbxAMatrix meshM, linkM;
-                cluster->GetTransformMatrix(meshM);       // mesh local -> world (bind)
-                cluster->GetTransformLinkMatrix(linkM);   // bone local -> world (bind)
+                // 바인드포즈에서의 메쉬/본 글로벌 행렬
+                FbxAMatrix meshM; // mesh local -> world (bind pose)
+                FbxAMatrix linkM; // bone local -> world (bind pose)
+                cluster->GetTransformMatrix(meshM);
+                cluster->GetTransformLinkMatrix(linkM);
 
-                FbxAMatrix offsetFbx = linkM.Inverse() * meshM; // model->bone inverse bind
+                // inverse bind: model(world) -> bone
+                FbxAMatrix offsetFbx = linkM.Inverse() * meshM;
 
                 XMFLOAT4X4 offset{};
                 for (int r = 0; r < 4; ++r)
+                {
                     for (int cc = 0; cc < 4; ++cc)
+                    {
                         offset.m[r][cc] = static_cast<float>(offsetFbx.Get(r, cc));
+                    }
+                }
 
                 m_Bones[boneIndex].offsetMatrix = offset;
             }
@@ -402,8 +406,8 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
     }
 
     // -----------------------------------------------------------------------------
-// 5) SubMesh 로 변환 (핵심)
-// -----------------------------------------------------------------------------
+    // 5) SubMesh 로 변환 (핵심)
+    // -----------------------------------------------------------------------------
     m_SubMeshes.clear();
 
     auto ToXM3 = [&](const FbxVector4& v) { return XMFLOAT3((float)v[0], (float)v[1], (float)v[2]); };
