@@ -339,6 +339,10 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
 //      - Animator에서 skinM = globalM * offsetMatrix 를 쓰므로
 //        skinnedPos = posL * (globalM * linkM^{-1} * meshM)
 // -----------------------------------------------------------------------------
+        // -----------------------------------------------------------------------------
+    // 4-1) FBX Skin/Cluster에서 inverse bind pose(offsetMatrix) 채우기
+    //      - offsetMatrix = linkM.Inverse() * meshM
+    // -----------------------------------------------------------------------------
     for (FbxMesh* m : meshes)
     {
         if (!m) continue;
@@ -367,28 +371,22 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                 int boneIndex = it->second;
                 if (boneIndex < 0 || boneIndex >= (int)m_Bones.size()) continue;
 
-                // 메쉬/본의 바인드 포즈 글로벌 행렬
+                // 바인드 포즈에서의 메쉬/본 글로벌 행렬
                 FbxAMatrix meshM, linkM;
-                cluster->GetTransformMatrix(meshM);       // Mesh 바인드 글로벌
-                cluster->GetTransformLinkMatrix(linkM);   // Bone 바인드 글로벌
+                cluster->GetTransformMatrix(meshM);       // mesh local -> world (bind)
+                cluster->GetTransformLinkMatrix(linkM);   // bone local -> world (bind)
 
-                // FBX 행렬 → XMFLOAT4X4
-                FbxAMatrix offsetFbx = linkM.Inverse() * meshM; // ★ inverse bind
+                FbxAMatrix offsetFbx = linkM.Inverse() * meshM; // model->bone inverse bind
+
                 XMFLOAT4X4 offset{};
                 for (int r = 0; r < 4; ++r)
-                {
-                    for (int c2 = 0; c2 < 4; ++c2)
-                    {
-                        offset.m[r][c2] = static_cast<float>(offsetFbx.Get(r, c2));
-                    }
-                }
+                    for (int cc = 0; cc < 4; ++cc)
+                        offset.m[r][cc] = static_cast<float>(offsetFbx.Get(r, cc));
 
                 m_Bones[boneIndex].offsetMatrix = offset;
             }
         }
     }
-
-
 
     // -----------------------------------------------------------------------------
     // 5) SubMesh 로 변환 (핵심)
@@ -458,19 +456,19 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
         // ───── 정점 생성 ─────
         for (int p = 0; p < polyCount; p++)
         {
-            int order[3] = { 0,1,2 };
+            int order[3] = { 0, 1, 2 };
             if (flip) std::swap(order[1], order[2]);
 
-            for (int i = 0; i < 3; i++)
+            for (int oi = 0; oi < 3; ++oi)
             {
-                int v = order[i];
+                int v = order[oi];
                 int cpIdx = mesh->GetPolygonVertex(p, v);
 
-                // ★★ 1) 위치: 메쉬 로컬(cp 그대로) 사용
+                // ★ 1) 위치: 메쉬 로컬(cp) 그대로
                 FbxVector4 cp = mesh->GetControlPointAt(cpIdx);
                 FbxVector4 pw = cp;
 
-                // ★★ 2) 노멀: 메쉬 로컬 노멀 그대로 사용
+                // ★ 2) 노멀: 메쉬 로컬 노멀 그대로
                 FbxVector4 n;
                 mesh->GetPolygonVertexNormal(p, v, n);
                 FbxVector4 nw(n[0], n[1], n[2], 0.0);
@@ -478,13 +476,14 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                 double L = sqrt(nw[0] * nw[0] + nw[1] * nw[1] + nw[2] * nw[2]);
                 if (L > 1e-12) { nw[0] /= L; nw[1] /= L; nw[2] /= L; }
 
-                // uv 그대로 (기존 코드 유지)
+                // ★ 3) uv (기존 코드 그대로)
                 XMFLOAT2 uv(0, 0);
                 if (uvSetName)
                 {
                     FbxVector2 u;
                     bool unm = false;
-                    if (mesh->GetPolygonVertexUV(p, v, uvSetName, u, unm)) {
+                    if (mesh->GetPolygonVertexUV(p, v, uvSetName, u, unm))
+                    {
                         uv = ToXM2(u);
                         uv.y = 1.0f - uv.y;
                     }
@@ -1008,7 +1007,7 @@ void CMesh::UpdateBoneTransformsOnGPU(
 
     const UINT copySize = sizeof(XMFLOAT4X4) * nBones;
 
-    // ★ 1) Transpose 해서 업로드 (월드 행렬과 동일한 규약)
+    // 1) Transpose 해서 월드와 같은 규약으로 맞춤
     std::vector<XMFLOAT4X4> transposed(nBones);
     for (int i = 0; i < nBones; ++i)
     {
@@ -1017,13 +1016,10 @@ void CMesh::UpdateBoneTransformsOnGPU(
         XMStoreFloat4x4(&transposed[i], t);
     }
 
-    // CPU 캐시도 transposed 기준으로 유지
     if (m_pxmf4x4BoneTransforms)
-    {
         memcpy(m_pxmf4x4BoneTransforms, transposed.data(), copySize);
-    }
 
-    // GPU 상수 버퍼에 업로드
+    // 2) GPU 상수 버퍼에 업로드
     void* pMapped = nullptr;
     D3D12_RANGE readRange = { 0, 0 };
     HRESULT hr = m_pd3dcbBoneTransforms->Map(0, &readRange, &pMapped);
@@ -1036,6 +1032,7 @@ void CMesh::UpdateBoneTransformsOnGPU(
     memcpy(pMapped, transposed.data(), copySize);
     m_pd3dcbBoneTransforms->Unmap(0, nullptr);
 }
+
 
 
 void CMesh::FillSkinWeights(FbxMesh* mesh, SubMesh& sm)
@@ -1105,7 +1102,9 @@ void CMesh::FillSkinWeights(FbxMesh* mesh, SubMesh& sm)
         auto& infl = cpInfluences[cp];
         if (infl.empty())
         {
-            // 스킨 정보가 전혀 없는 정점: 기본값 유지 (Bone 0, weight 1)
+            // 기본값: 본 0 한 개만 1.0
+            cpBones[cp] = XMUINT4(0, 0, 0, 0);
+            cpWeights[cp] = XMFLOAT4(1, 0, 0, 0);
             continue;
         }
 

@@ -309,7 +309,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	// 5) Player 설정
 	//=====================================================================
 	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
-	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, 100.0f, -200.0f));
+	m_pPlayer->SetCameraOffset(XMFLOAT3(-200.0f, 100.0f, -00.0f));
 	m_pPlayer->CreateShaderVariables(pd3dDevice, pd3dCommandList);
 	m_pPlayer->SetShader(pShader);
 
@@ -387,7 +387,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 		//                                  AnimationClip& outClip,
 		//                                  float timeScale);
 		bool animLoaded = mesh->LoadAnimationFromFBX(
-			"Models/unitychan_JUMP00.fbx", // 애니 FBX 경로
+			"Models/unitychan_WAIT00.fbx", // 애니 FBX 경로
 			"Jump",                        // 클립 이름
 			jumpClip,                      // 결과 클립
 			1.0f                           // timeScale (필요하면 조정)
