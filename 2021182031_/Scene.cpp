@@ -256,15 +256,30 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	m_pPlayer->SetSrvDescriptorInfo(m_pd3dSrvDescriptorHeap, m_nSrvDescriptorIncrementSize);
 
 	//=====================================================================
-	// 2) UnityChan Mesh 로드
+	// 2) UnityChan Mesh ε
 	//=====================================================================
 	CMesh* mesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.fbx", 2);
 
+	// [추가] 본이 있다면 스키닝 활성화
+	int boneCount = mesh->GetBoneCount();
+	if (boneCount > 0)
+	{
+		mesh->EnableSkinning(boneCount);
+		char buf[256];
+		sprintf_s(buf, "[TankScene] UnityChan bones: %d, skinning enabled.\n", boneCount);
+		OutputDebugStringA(buf);
+	}
+	else
+	{
+		OutputDebugStringA("[TankScene] UnityChan has no bones, skinning disabled.\n");
+	}
+
 	//=====================================================================
-	// 3) Player에 Mesh 장착
+	// 3) Player Mesh 
 	//=====================================================================
 	m_pPlayer->SetMesh(0, mesh);
 	m_pPlayer->SetSrvDescriptorInfo(m_pd3dSrvDescriptorHeap, m_nSrvDescriptorIncrementSize);
+
 
 	//=====================================================================
 	// 4) SubMesh 자동 텍스처 매핑
@@ -294,7 +309,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	// 5) Player 설정
 	//=====================================================================
 	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
-	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, -1.0f, -2.0f));
+	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, -0.0f, -2.0f));
 	m_pPlayer->CreateShaderVariables(pd3dDevice, pd3dCommandList);
 	m_pPlayer->SetShader(pShader);
 
