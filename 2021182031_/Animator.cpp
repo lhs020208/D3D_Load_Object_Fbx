@@ -97,7 +97,7 @@ void CAnimator::Update(float dt)
         return;
 
     // 1) 시간 진행
-    m_fCurrentTime += dt;
+    //m_fCurrentTime += dt;
 
     float duration = m_pCurrentClip->duration;
 

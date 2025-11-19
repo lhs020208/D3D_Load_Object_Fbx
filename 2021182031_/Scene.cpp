@@ -309,7 +309,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	// 5) Player 설정
 	//=====================================================================
 	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
-	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, -0.0f, -2.0f));
+	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, 100.0f, -200.0f));
 	m_pPlayer->CreateShaderVariables(pd3dDevice, pd3dCommandList);
 	m_pPlayer->SetShader(pShader);
 
@@ -377,6 +377,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	// 7) UnityChan 애니메이션(JUMP00) 로드 & Animator에 등록 + 재생
 	//=====================================================================
+
 	{
 		AnimationClip jumpClip;
 
