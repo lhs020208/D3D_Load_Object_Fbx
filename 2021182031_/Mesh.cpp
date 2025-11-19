@@ -337,6 +337,7 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                     m_BoneNameToIndex[b.name] = self;
                     m_Bones.push_back(b);
                 }
+
             }
 
             for (int i = 0; i < node->GetChildCount(); ++i)

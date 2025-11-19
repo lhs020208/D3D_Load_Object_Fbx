@@ -103,7 +103,9 @@ static void SampleBoneTrack(
 
 // ============================================================
 // AnimationClip::Evaluate
-//   - timeSec 시각에서 각 본의 로컬 행렬을 outLocalTransforms에 채움
+//   - timeSec 시각에서 각 본의 "로컬 행렬"을 outLocalTransforms에 채움
+//   - 키가 없는 본은 기본 포즈(단위 TRS)를 사용한다.
+//   - bindLocal 은 Animator 쪽에서 덮어씌우도록 유지 (시그니처 변경 X)
 // ============================================================
 void AnimationClip::Evaluate(float timeSec, std::vector<XMFLOAT4X4>& outLocalTransforms) const
 {
@@ -128,7 +130,8 @@ void AnimationClip::Evaluate(float timeSec, std::vector<XMFLOAT4X4>& outLocalTra
 
         if (track.keyframes.empty())
         {
-            // 이 본은 키가 없으면 기본 포즈(단위 행렬)
+            // 이 본은 키가 없으면 "기본 TRS" (identity) 로 남겨둔다.
+            // 실제 최종 포즈는 CAnimator::Update에서 skeleton[i].bindLocal 로 덮어씌움.
             t = XMFLOAT3(0.f, 0.f, 0.f);
             r = XMFLOAT4(0.f, 0.f, 0.f, 1.f);
             s = XMFLOAT3(1.f, 1.f, 1.f);
