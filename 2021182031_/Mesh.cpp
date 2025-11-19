@@ -990,11 +990,11 @@ CAnimator* CMesh::EnsureAnimator()
 //---------------------------------------------------------------------------
 
 // 애니메이션 결과 본 행렬을 GPU 상수버퍼에 업로드
-void CMesh::UpdateBoneTransformsOnGPU(ID3D12GraphicsCommandList* cmdList,
+void CMesh::UpdateBoneTransformsOnGPU(
+    ID3D12GraphicsCommandList* cmdList,
     const XMFLOAT4X4* boneMatrices,
     int nBones)
 {
-    // 현재 구현에서는 cmdList를 쓸 일이 없음 (UPLOAD 힙 상수버퍼)
     (void)cmdList;
 
     if (!m_bSkinnedMesh) return;
@@ -1004,22 +1004,27 @@ void CMesh::UpdateBoneTransformsOnGPU(ID3D12GraphicsCommandList* cmdList,
 
     const int boneCount = static_cast<int>(m_Bones.size());
     if (boneCount <= 0) return;
-
-    // 넘겨준 개수가 실제 본 개수보다 크면 클램프
     if (nBones > boneCount) nBones = boneCount;
 
     const UINT copySize = sizeof(XMFLOAT4X4) * nBones;
 
-    // 1) CPU 캐시(m_pxmf4x4BoneTransforms) 업데이트
-    if (m_pxmf4x4BoneTransforms)
+    // ★ 1) Transpose 해서 업로드 (월드 행렬과 동일한 규약)
+    std::vector<XMFLOAT4X4> transposed(nBones);
+    for (int i = 0; i < nBones; ++i)
     {
-        memcpy(m_pxmf4x4BoneTransforms, boneMatrices, copySize);
+        XMMATRIX m = XMLoadFloat4x4(&boneMatrices[i]);
+        XMMATRIX t = XMMatrixTranspose(m);
+        XMStoreFloat4x4(&transposed[i], t);
     }
 
-    // 2) GPU 상수 버퍼에 업로드 (UPLOAD 힙이므로 Map/Unmap만 하면 됨)
-    void* pMapped = nullptr;
+    // CPU 캐시도 transposed 기준으로 유지
+    if (m_pxmf4x4BoneTransforms)
+    {
+        memcpy(m_pxmf4x4BoneTransforms, transposed.data(), copySize);
+    }
 
-    // 우리는 읽지 않으므로 readRange를 {0,0}으로 설정
+    // GPU 상수 버퍼에 업로드
+    void* pMapped = nullptr;
     D3D12_RANGE readRange = { 0, 0 };
     HRESULT hr = m_pd3dcbBoneTransforms->Map(0, &readRange, &pMapped);
     if (FAILED(hr) || !pMapped)
@@ -1028,11 +1033,10 @@ void CMesh::UpdateBoneTransformsOnGPU(ID3D12GraphicsCommandList* cmdList,
         return;
     }
 
-    memcpy(pMapped, boneMatrices, copySize);
-
-    // 전체 범위를 썼으므로 writtenRange는 nullptr로 두어도 됨
+    memcpy(pMapped, transposed.data(), copySize);
     m_pd3dcbBoneTransforms->Unmap(0, nullptr);
 }
+
 
 void CMesh::FillSkinWeights(FbxMesh* mesh, SubMesh& sm)
 {
