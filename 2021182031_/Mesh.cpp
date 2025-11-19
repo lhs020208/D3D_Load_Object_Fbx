@@ -429,8 +429,8 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
             geo.SetR(node->GetGeometricRotation(FbxNode::eSourcePivot));
             geo.SetS(node->GetGeometricScaling(FbxNode::eSourcePivot));
         }
+        // 글로벌/지오메트리 변환은 플립 여부 판단에만 사용
         FbxAMatrix xform = global * geo;
-
         bool flip = (xform.Determinant() < 0);
 
         // UVSet 이름
@@ -449,18 +449,19 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                 int v = order[i];
                 int cpIdx = mesh->GetPolygonVertex(p, v);
 
+                // ★★ 1) 위치: 메쉬 로컬(cp 그대로) 사용
                 FbxVector4 cp = mesh->GetControlPointAt(cpIdx);
-                FbxVector4 pw = xform.MultT(cp);
+                FbxVector4 pw = cp;
 
-                // normal
+                // ★★ 2) 노멀: 메쉬 로컬 노멀 그대로 사용
                 FbxVector4 n;
                 mesh->GetPolygonVertexNormal(p, v, n);
-                FbxVector4 nw = xform.MultT(FbxVector4(n[0], n[1], n[2], 0));
+                FbxVector4 nw(n[0], n[1], n[2], 0.0);
 
                 double L = sqrt(nw[0] * nw[0] + nw[1] * nw[1] + nw[2] * nw[2]);
                 if (L > 1e-12) { nw[0] /= L; nw[1] /= L; nw[2] /= L; }
 
-                // uv
+                // uv 그대로 (기존 코드 유지)
                 XMFLOAT2 uv(0, 0);
                 if (uvSetName)
                 {
