@@ -314,11 +314,23 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                     b.name = node->GetName();
                     b.parentIndex = parent;
 
-                    // NOTE:
-                    //  - offsetMatrix를 "inverse bind pose"로 사용할 것이다.
-                    //  - 나중에 FbxCluster::GetTransformMatrix / GetTransformLinkMatrix를 사용해서
-                    //    실제 inverse bind를 계산해 넣을 예정.
-                    //  - 지금은 임시로 identity로 초기화한다.
+                    // 1) 바인드포즈 기준 로컬 행렬 저장
+                    //    - time=0 에서의 로컬 트랜스폼을 사용 (바인드포즈로 가정)
+                    FbxTime bindTime;
+                    bindTime.SetSecondDouble(0.0);
+                    FbxAMatrix localM = node->EvaluateLocalTransform(bindTime);
+
+                    XMFLOAT4X4 bindLocal{};
+                    for (int r = 0; r < 4; ++r)
+                    {
+                        for (int c = 0; c < 4; ++c)
+                        {
+                            bindLocal.m[r][c] = static_cast<float>(localM.Get(r, c));
+                        }
+                    }
+                    b.bindLocal = bindLocal;
+
+                    // 2) inverse bind pose 는 나중에 Cluster에서 채울 것
                     XMStoreFloat4x4(&b.offsetMatrix, XMMatrixIdentity());
 
                     self = (int)m_Bones.size();
@@ -389,8 +401,8 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
     }
 
     // -----------------------------------------------------------------------------
-    // 5) SubMesh 로 변환 (핵심)
-    // -----------------------------------------------------------------------------
+// 5) SubMesh 로 변환 (핵심)
+// -----------------------------------------------------------------------------
     m_SubMeshes.clear();
 
     auto ToXM3 = [&](const FbxVector4& v) { return XMFLOAT3((float)v[0], (float)v[1], (float)v[2]); };
@@ -407,7 +419,7 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
         SubMesh sm;
 
         // =======================================================
-        // Mesh 이름 저장
+        // Mesh / Material 이름
         // =======================================================
         if (FbxNode* node = mesh->GetNode())
         {
@@ -418,22 +430,18 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
             sm.meshName = "UnnamedMesh";
         }
 
-        // =======================================================
-        // Material 이름 저장
-        // =======================================================
         int materialCount = mesh->GetNode() ? mesh->GetNode()->GetMaterialCount() : 0;
         if (materialCount > 0)
         {
             FbxSurfaceMaterial* mat = mesh->GetNode()->GetMaterial(0);
-            if (mat) sm.materialName = mat->GetName();
-            else     sm.materialName = "UnnamedMaterial";
+            sm.materialName = mat ? mat->GetName() : "UnnamedMaterial";
         }
         else
         {
             sm.materialName = "NoMaterial";
         }
 
-        // ───── 트랜스폼 적용 ─────
+        // ───── flip 판단용으로만 global*geo 계산 ─────
         FbxNode* node = mesh->GetNode();
         FbxAMatrix global = node ? node->EvaluateGlobalTransform() : FbxAMatrix();
 
@@ -444,7 +452,6 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
             geo.SetR(node->GetGeometricRotation(FbxNode::eSourcePivot));
             geo.SetS(node->GetGeometricScaling(FbxNode::eSourcePivot));
         }
-        // 글로벌/지오메트리 변환은 플립 여부 판단에만 사용
         FbxAMatrix xform = global * geo;
         bool flip = (xform.Determinant() < 0);
 
@@ -453,8 +460,8 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
         mesh->GetUVSetNames(uvSets);
         const char* uvSetName = (uvSets.GetCount() > 0) ? uvSets.GetStringAt(0) : nullptr;
 
-        // ───── 정점 생성 ─────
-        for (int p = 0; p < polyCount; p++)
+        // ───── 정점 생성: cp(메시 로컬) 기준으로 저장 ─────
+        for (int p = 0; p < polyCount; ++p)
         {
             int order[3] = { 0, 1, 2 };
             if (flip) std::swap(order[1], order[2]);
@@ -464,28 +471,33 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                 int v = order[oi];
                 int cpIdx = mesh->GetPolygonVertex(p, v);
 
-                // ★ 1) 위치: 메쉬 로컬(cp) 그대로
+                // 1) 위치: 컨트롤 포인트(cp)를 그대로 사용 (메시 로컬 공간)
                 FbxVector4 cp = mesh->GetControlPointAt(cpIdx);
-                FbxVector4 pw = cp;
+                FbxVector4 pw = cp; // xform.MultT(cp) 쓰지 않음
 
-                // ★ 2) 노멀: 메쉬 로컬 노멀 그대로
+                // 2) 노멀: 메시 로컬 노멀 → 정규화
                 FbxVector4 n;
                 mesh->GetPolygonVertexNormal(p, v, n);
                 FbxVector4 nw(n[0], n[1], n[2], 0.0);
 
                 double L = sqrt(nw[0] * nw[0] + nw[1] * nw[1] + nw[2] * nw[2]);
-                if (L > 1e-12) { nw[0] /= L; nw[1] /= L; nw[2] /= L; }
+                if (L > 1e-12)
+                {
+                    nw[0] /= L;
+                    nw[1] /= L;
+                    nw[2] /= L;
+                }
 
-                // ★ 3) uv (기존 코드 그대로)
+                // 3) UV
                 XMFLOAT2 uv(0, 0);
                 if (uvSetName)
                 {
                     FbxVector2 u;
-                    bool unm = false;
-                    if (mesh->GetPolygonVertexUV(p, v, uvSetName, u, unm))
+                    bool unmapped = false;
+                    if (mesh->GetPolygonVertexUV(p, v, uvSetName, u, unmapped))
                     {
                         uv = ToXM2(u);
-                        uv.y = 1.0f - uv.y;
+                        uv.y = 1.0f - uv.y; // DirectX용 V 뒤집기
                     }
                 }
 
@@ -493,18 +505,16 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                 sm.normals.push_back(ToXM3(nw));
                 sm.uvs.push_back(uv);
 
-                // 스키닝 기본값
-                //sm.boneIndices.push_back(XMUINT4(0, 0, 0, 0));
-                //sm.boneWeights.push_back(XMFLOAT4(1, 0, 0, 0));
-
                 sm.indices.push_back((UINT)sm.indices.size());
             }
         }
 
+        // 스킨 가중치는 cp 기준으로 FillSkinWeights 쪽에서 채움
         FillSkinWeights(mesh, sm);
 
         m_SubMeshes.push_back(sm);
     }
+
 
     // -----------------------------------------------------------------------------
     // 6) 원래 OBB 계산 기능 유지
