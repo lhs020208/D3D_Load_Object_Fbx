@@ -92,16 +92,18 @@ void CAnimator::SetTime(float timeSec)
 // ============================================================
 void CAnimator::Update(float dt)
 {
+    using namespace DirectX;
+
     // 0) 재생 중이 아니면 아무 것도 안 함
     if (!m_bPlaying || !m_pCurrentClip)
         return;
 
     // 1) 시간 진행
     //m_fCurrentTime += dt;
-    m_fCurrentTime += 0.001f;
-
-    float duration = m_pCurrentClip->duration;
-
+    //m_fCurrentTime += 0.001f;
+        
+        
+    const float duration = m_pCurrentClip->duration;
     if (duration > 0.0f)
     {
         if (m_fCurrentTime > duration)
@@ -128,18 +130,18 @@ void CAnimator::Update(float dt)
     if (boneCount == 0)
         return;
 
-    // 2) 버퍼 사이즈 보정
+    // 2) 내부 버퍼 사이즈 보정
     if (m_LocalPose.size() < boneCount) m_LocalPose.resize(boneCount);
     if (m_GlobalPose.size() < boneCount) m_GlobalPose.resize(boneCount);
     if (m_FinalBoneMatrices.size() < boneCount) m_FinalBoneMatrices.resize(boneCount);
 
     // 3) 현재 시간에서 로컬 본 행렬들 샘플링
-    //    (AnimationClip::Evaluate 가 TRS 보간해서 로컬 행렬을 outLocalTransforms에 채운다고 가정)
+    //    - 키 있는 본: TRS 보간
+    //    - 키 없는 본: skeleton[i].bindLocal
     m_pCurrentClip->Evaluate(m_fCurrentTime, m_Skeleton, m_LocalPose);
 
-    using namespace DirectX;
-
     // 4) 로컬 → 글로벌 행렬 계산
+    //    childGlobal = local * parentGlobal  (DirectXMath/row-vector 컨벤션 기준)
     for (size_t i = 0; i < boneCount; ++i)
     {
         XMMATRIX localM = XMLoadFloat4x4(&m_LocalPose[i]);
@@ -152,15 +154,13 @@ void CAnimator::Update(float dt)
         }
         else
         {
-            // 자식본: 글로벌 = 로컬 * 부모글로벌
-            // (DirectXMath의 행벡터/우측 곱 컨벤션에 맞춘 순서)
             XMMATRIX parentGlobal = XMLoadFloat4x4(&m_GlobalPose[parentIndex]);
-            XMMATRIX globalM = localM * parentGlobal;
+            XMMATRIX globalM = localM * parentGlobal; // ★ childGlobal = local * parentGlobal
             XMStoreFloat4x4(&m_GlobalPose[i], globalM);
         }
     }
 
-    // 5) 최종 스키닝 행렬: Global * offsetMatrix(inverse bind pose)
+    // 5) 최종 스키닝 행렬 = Global * offsetMatrix(inverse bind pose)
     for (size_t i = 0; i < boneCount; ++i)
     {
         XMMATRIX globalM = XMLoadFloat4x4(&m_GlobalPose[i]);
@@ -170,6 +170,7 @@ void CAnimator::Update(float dt)
         XMStoreFloat4x4(&m_FinalBoneMatrices[i], skinM);
     }
 }
+
 
 
 // ============================================================
