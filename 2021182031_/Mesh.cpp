@@ -66,7 +66,7 @@ namespace
             FbxAMatrix localM = node->EvaluateLocalTransform(t);
             FbxVector4 T = localM.GetT();
             FbxQuaternion Q = localM.GetQ();
-            FbxVector4 S = localM.GetS();
+            //FbxVector4 S = localM.GetS();
 
             Keyframe k;
             // FBX 내부 타임 모드와 상관 없이 GetSecondDouble() 이 초 단위를 돌려준다.
@@ -84,10 +84,11 @@ namespace
                 static_cast<float>(Q[2]),
                 static_cast<float>(Q[3]));
 
-            k.scale = XMFLOAT3(
-                static_cast<float>(S[0]),
-                static_cast<float>(S[1]),
-                static_cast<float>(S[2]));
+            k.scale = XMFLOAT3(1, 1, 1);
+            //k.scale = XMFLOAT3(
+            //    static_cast<float>(S[0]),
+            //    static_cast<float>(S[1]),
+             //   static_cast<float>(S[2]));
 
             track.keyframes.push_back(k);
         }
@@ -388,7 +389,7 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                 // 바인드포즈에서의 본 글로벌 행렬
                 FbxAMatrix linkM; // bone local -> world (bind pose)
                 cluster->GetTransformLinkMatrix(linkM);
-
+                linkM.SetS(FbxVector4(1, 1, 1)); // scale 강제 1
                 // inverse bind: world(bind) -> bone local(bind)
                 // 이후 Animator에서 global(현재)와 곱해서
                 // posL(메시 로컬, 바인드) -> boneSpace(bind) -> world(현재) 로 사용
@@ -1324,8 +1325,39 @@ bool CMesh::LoadAnimationFromFBX(
             outClip);
     }
 
+    //------------------------------------------------------------
+    // ★ 모든 BoneTrack의 키들을 확인하여, 첫 키 시간을 0으로 정렬
+    //------------------------------------------------------------
+    float minTime = FLT_MAX;
+
+    for (auto& track : outClip.boneTracks)
+    {
+        if (track.keyframes.empty()) continue;
+
+        // 첫 키의 timeSec 중 최소값 찾기
+        if (track.keyframes[0].timeSec < minTime)
+            minTime = track.keyframes[0].timeSec;
+    }
+
+    if (minTime == FLT_MAX)
+        minTime = 0.0f;
+
+    // timeSec 모두 minTime만큼 앞으로 당겨서 첫 키가 0초가 되게 함
+    for (auto& track : outClip.boneTracks)
+    {
+        for (auto& k : track.keyframes)
+            k.timeSec -= minTime;
+    }
+
+    outClip.duration -= minTime;
+    if (outClip.duration < 0.0f)
+        outClip.duration = 0.0f;
+
+    //------------------------------------------------------------
+
     pScene->Destroy();
     pManager->Destroy();
 
     return true;
 }
+
