@@ -314,7 +314,7 @@ void CPersonPlayer::Animate(float fElapsedTime)
 	XMFLOAT3 right = GetRight();
 	XMFLOAT3 moveVec = { 0.0f, 0.0f, 0.0f };
 
-	float speed = fElapsedTime * 0.5f * 10;
+	float speed = fElapsedTime * 0.5f * 1000;
 
 	moveVec.x += right.x * move_x * speed;
 	moveVec.z += right.z * move_x * speed;

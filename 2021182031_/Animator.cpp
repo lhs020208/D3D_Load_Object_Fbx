@@ -88,7 +88,7 @@ void CAnimator::SetTime(float timeSec)
 // Update
 //   - dt만큼 시간 증가
 //   - 클립 범위 벗어나면 loop 처리
-//   - 실제 본 행렬 계산은 TODO
+//   - 본 행렬 계산
 // ============================================================
 void CAnimator::Update(float dt)
 {
@@ -100,9 +100,8 @@ void CAnimator::Update(float dt)
 
     // 1) 시간 진행
     //m_fCurrentTime += dt;
-    m_fCurrentTime += 0.001f;
-        
-        
+    m_fCurrentTime += 0.00001f;
+
     const float duration = m_pCurrentClip->duration;
     if (duration > 0.0f)
     {
@@ -141,7 +140,7 @@ void CAnimator::Update(float dt)
     m_pCurrentClip->Evaluate(m_fCurrentTime, m_Skeleton, m_LocalPose);
 
     // 4) 로컬 → 글로벌 행렬 계산
-    //    childGlobal = local * parentGlobal  (DirectXMath/row-vector 컨벤션 기준)
+    //    FBX 컨벤션에 맞춰: childGlobal = parentGlobal * local
     for (size_t i = 0; i < boneCount; ++i)
     {
         XMMATRIX localM = XMLoadFloat4x4(&m_LocalPose[i]);
@@ -155,23 +154,26 @@ void CAnimator::Update(float dt)
         else
         {
             XMMATRIX parentGlobal = XMLoadFloat4x4(&m_GlobalPose[parentIndex]);
-            XMMATRIX globalM = localM * parentGlobal; // ★ childGlobal = local * parentGlobal
+            XMMATRIX globalM = parentGlobal * localM;
             XMStoreFloat4x4(&m_GlobalPose[i], globalM);
         }
     }
 
-    // 5) 최종 스키닝 행렬 = Global * offsetMatrix(inverse bind pose)
+    // 5) 최종 스키닝 행렬
+    //    - offsetMatrix = (글로벌 바인드 행렬의 역행렬)
+    //    - skin = offset * global
+    //
+    //    HLSL에서 mul(posL, gBoneTransforms[b]) 로 사용하므로,
+    //    posL(메시 로컬, 바인드) → posSkinned(메시 로컬, 현재 포즈)
     for (size_t i = 0; i < boneCount; ++i)
     {
         XMMATRIX globalM = XMLoadFloat4x4(&m_GlobalPose[i]);
         XMMATRIX offsetM = XMLoadFloat4x4(&m_Skeleton[i].offsetMatrix);
 
-        XMMATRIX skinM = globalM * offsetM;
+        XMMATRIX skinM = offsetM * globalM;
         XMStoreFloat4x4(&m_FinalBoneMatrices[i], skinM);
     }
 }
-
-
 
 // ============================================================
 // GetCurrentClipName

@@ -351,9 +351,9 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
 
     // -------------------------------------------------------------------------
     // 4-1) FBX Skin/Cluster에서 inverse bind pose(offsetMatrix) 채우기
-    //      - offsetMatrix = linkM.Inverse() * meshM
-    //      - Animator에서 skinM = globalM * offsetMatrix 를 쓰므로
-    //        skinnedPos = posL * (globalM * linkM^{-1} * meshM) 형태가 됨
+    //      - offsetMatrix = (글로벌 바인드 행렬의 역행렬)
+    //      - Animator에서 skinM = offset * global 를 쓰므로
+    //        최종적으로 posSkinned = posL * (offset * global)
     // -------------------------------------------------------------------------
     for (FbxMesh* m : meshes)
     {
@@ -385,14 +385,14 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                 int boneIndex = it->second;
                 if (boneIndex < 0 || boneIndex >= (int)m_Bones.size()) continue;
 
-                // 바인드포즈에서의 메쉬/본 글로벌 행렬
-                FbxAMatrix meshM; // mesh local -> world (bind pose)
+                // 바인드포즈에서의 본 글로벌 행렬
                 FbxAMatrix linkM; // bone local -> world (bind pose)
-                cluster->GetTransformMatrix(meshM);
                 cluster->GetTransformLinkMatrix(linkM);
 
-                // inverse bind: model(world) -> bone
-                FbxAMatrix offsetFbx = linkM.Inverse() * meshM;
+                // inverse bind: world(bind) -> bone local(bind)
+                // 이후 Animator에서 global(현재)와 곱해서
+                // posL(메시 로컬, 바인드) -> boneSpace(bind) -> world(현재) 로 사용
+                FbxAMatrix offsetFbx = linkM.Inverse();
 
                 XMFLOAT4X4 offset{};
                 for (int r = 0; r < 4; ++r)
@@ -407,6 +407,7 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
             }
         }
     }
+
 
     // -----------------------------------------------------------------------------
     // 5) SubMesh 로 변환 (핵심)
