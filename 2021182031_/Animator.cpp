@@ -100,7 +100,7 @@ void CAnimator::Update(float dt)
 
     // 1) 시간 진행
     //m_fCurrentTime += dt;
-    //m_fCurrentTime += 0.001f;
+    m_fCurrentTime += 0.001f;
         
         
     const float duration = m_pCurrentClip->duration;

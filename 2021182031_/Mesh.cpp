@@ -1112,17 +1112,21 @@ void CMesh::FillSkinWeights(FbxMesh* mesh, SubMesh& sm)
     // -------------------------------------------------------------------------
     // 2) 각 ControlPoint마다 최대 4개까지 영향이 큰 본만 유지하고, 가중치 정규화
     // -------------------------------------------------------------------------
+    // 2) cp별로 최대 4개 본만 유지하고, 가중치 정규화
     std::vector<XMUINT4>  cpBones(cpCount, XMUINT4(0, 0, 0, 0));
-    std::vector<XMFLOAT4> cpWeights(cpCount, XMFLOAT4(1, 0, 0, 0)); // 기본값: 본 0에 100%
+    // 스킨 정보 없는 정점은 weight 전부 0 > VS에서 fallback 경로 사용
+    std::vector<XMFLOAT4> cpWeights(cpCount, XMFLOAT4(0, 0, 0, 0));
 
     for (int cp = 0; cp < cpCount; ++cp)
     {
         auto& infl = cpInfluences[cp];
         if (infl.empty())
         {
-            // 기본값: 본 0 한 개만 1.0
+            // 스킨 인플루언스 없음 > boneIndices=0, weights=0,0,0,0
+            // VS 스키닝 셰이더에서 weight 합=0이면 skinnedPos==0이 되어
+            // fallback(원래 posL / normal) 경로로 처리되게 한다.
             cpBones[cp] = XMUINT4(0, 0, 0, 0);
-            cpWeights[cp] = XMFLOAT4(1, 0, 0, 0);
+            cpWeights[cp] = XMFLOAT4(0, 0, 0, 0);
             continue;
         }
 
