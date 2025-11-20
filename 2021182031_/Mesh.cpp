@@ -37,9 +37,11 @@ namespace
     }
 
     // 하나의 본 노드에 대해 BoneKeyframes 를 채운다.
+// 하나의 본 노드에 대해 BoneKeyframes 를 채운다.
     void ExtractBoneTrack(
         FbxNode* node,
         int boneIndex,
+        const std::vector<Bone>& bones,   // ★ 추가
         FbxAnimLayer* layer,
         const FbxTimeSpan& timeSpan,
         float timeScale,
@@ -58,37 +60,43 @@ namespace
         // 시작 시간을 0초로 두기 위해 기준값을 빼준다.
         const double startSec = timeSpan.GetStart().GetSecondDouble();
 
+        // ★ 여기서 skeleton(bones)에서 bindLocal 꺼내쓴다
+        const Bone& bone = bones[boneIndex];
+
         for (const FbxTime& t : keyTimes)
         {
             if (t < timeSpan.GetStart() || t > timeSpan.GetStop())
                 continue;
 
-            FbxAMatrix localM = node->EvaluateLocalTransform(t);
-            FbxVector4 T = localM.GetT();
-            FbxQuaternion Q = localM.GetQ();
-            //FbxVector4 S = localM.GetS();
+            FbxAMatrix animLocal = node->EvaluateLocalTransform(t);
+
+            // bindLocal 불러오기
+            XMMATRIX bind = XMLoadFloat4x4(&bone.bindLocal);
+            XMMATRIX bindInv = XMMatrixInverse(nullptr, bind);
+
+            // animLocal → XMMATRIX 변환
+            XMFLOAT4X4 animF{};
+            for (int r = 0; r < 4; ++r)
+            {
+                for (int c = 0; c < 4; ++c)
+                    animF.m[r][c] = (float)animLocal.Get(r, c);
+            }
+            XMMATRIX anim = XMLoadFloat4x4(&animF);
+
+            // ★ 좌표계 보정
+            XMMATRIX corrected = bindInv * anim * bind;
+
+            // TRS 분해
+            XMVECTOR S, R, T;
+            XMMatrixDecompose(&S, &R, &T, corrected);
+
+            double sec = t.GetSecondDouble() - startSec;
 
             Keyframe k;
-            // FBX 내부 타임 모드와 상관 없이 GetSecondDouble() 이 초 단위를 돌려준다.
-            double sec = t.GetSecondDouble() - startSec;
-            k.timeSec = static_cast<float>(sec * timeScale);
-
-            k.translation = XMFLOAT3(
-                static_cast<float>(T[0]),
-                static_cast<float>(T[1]),
-                static_cast<float>(T[2]));
-
-            k.rotationQuat = XMFLOAT4(
-                static_cast<float>(Q[0]),
-                static_cast<float>(Q[1]),
-                static_cast<float>(Q[2]),
-                static_cast<float>(Q[3]));
-
+            k.timeSec = (float)(sec * timeScale);
+            XMStoreFloat3(&k.translation, T);
+            XMStoreFloat4(&k.rotationQuat, R);
             k.scale = XMFLOAT3(1, 1, 1);
-            //k.scale = XMFLOAT3(
-            //    static_cast<float>(S[0]),
-            //    static_cast<float>(S[1]),
-             //   static_cast<float>(S[2]));
 
             track.keyframes.push_back(k);
         }
@@ -101,10 +109,13 @@ namespace
             });
     }
 
+
     // 씬 트리 전체를 돌며 본 이름과 일치하는 노드에서 트랙을 뽑는다.
+// 씬 트리 전체를 돌며 본 이름과 일치하는 노드에서 트랙을 뽑는다.
     void TraverseAndExtractTracks(
         FbxNode* node,
         FbxAnimLayer* layer,
+        const std::vector<Bone>& bones,                       // ★ 추가
         const std::unordered_map<std::string, int>& boneNameToIndex,
         const FbxTimeSpan& timeSpan,
         float timeScale,
@@ -119,16 +130,19 @@ namespace
         if (it != boneNameToIndex.end())
         {
             int boneIndex = it->second;
-            ExtractBoneTrack(node, boneIndex, layer, timeSpan, timeScale, clip);
+            ExtractBoneTrack(node, boneIndex, bones,           // ★ bones 전달
+                layer, timeSpan, timeScale, clip);
         }
 
         int childCount = node->GetChildCount();
         for (int i = 0; i < childCount; ++i)
         {
             TraverseAndExtractTracks(node->GetChild(i), layer,
+                bones,                                         // ★ 전달
                 boneNameToIndex, timeSpan, timeScale, clip);
         }
     }
+
 } // anonymous namespace
 
 CPolygon::CPolygon(int nVertices)
@@ -1320,40 +1334,12 @@ bool CMesh::LoadAnimationFromFBX(
     if (pRoot)
     {
         TraverseAndExtractTracks(pRoot, pLayer,
+            m_Bones,                // ★ skeleton 넘겨줌
             m_BoneNameToIndex,
             timeSpan, timeScale,
             outClip);
     }
 
-    //------------------------------------------------------------
-    // ★ 모든 BoneTrack의 키들을 확인하여, 첫 키 시간을 0으로 정렬
-    //------------------------------------------------------------
-    float minTime = FLT_MAX;
-
-    for (auto& track : outClip.boneTracks)
-    {
-        if (track.keyframes.empty()) continue;
-
-        // 첫 키의 timeSec 중 최소값 찾기
-        if (track.keyframes[0].timeSec < minTime)
-            minTime = track.keyframes[0].timeSec;
-    }
-
-    if (minTime == FLT_MAX)
-        minTime = 0.0f;
-
-    // timeSec 모두 minTime만큼 앞으로 당겨서 첫 키가 0초가 되게 함
-    for (auto& track : outClip.boneTracks)
-    {
-        for (auto& k : track.keyframes)
-            k.timeSec -= minTime;
-    }
-
-    outClip.duration -= minTime;
-    if (outClip.duration < 0.0f)
-        outClip.duration = 0.0f;
-
-    //------------------------------------------------------------
 
     pScene->Destroy();
     pManager->Destroy();
