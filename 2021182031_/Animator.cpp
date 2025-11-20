@@ -135,7 +135,7 @@ void CAnimator::Update(float dt)
 
     // 3) 현재 시간에서 로컬 본 행렬들 샘플링
     //    (AnimationClip::Evaluate 가 TRS 보간해서 로컬 행렬을 outLocalTransforms에 채운다고 가정)
-    m_pCurrentClip->Evaluate(m_fCurrentTime, m_LocalPose);
+    m_pCurrentClip->Evaluate(m_fCurrentTime, m_Skeleton, m_LocalPose);
 
     using namespace DirectX;
 

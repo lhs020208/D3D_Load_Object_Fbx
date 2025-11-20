@@ -43,41 +43,42 @@ struct BoneKeyframes
     - Evaluate(t): t초에 대해 본마다 로컬 TRS 행렬을 만들어낼 예정
     ============================================================
 */
-struct AnimationClip
-{
-    std::string name;            // 클립 이름 (예: "Idle", "Walk", "Jump")
-    float       duration = 0.f;  // 전체 길이(초), FBX에서 자동 계산 예정
-
-    // 본 인덱스 = CMesh.m_Bones의 인덱스와 동일한 위치에 저장
-    // 즉, m_BoneTracks[i]가 i번째 본의 트랙.
-    std::vector<BoneKeyframes> boneTracks;
-
-    // 이름 → 본트랙 인덱스 (필수는 아니지만 편의용)
-    std::unordered_map<std::string, int> boneNameToTrack;
-
-    void Evaluate(float timeSec, std::vector<XMFLOAT4X4>& outLocalTransforms) const;
-};
-
 struct Bone
 {
     std::string name;        // 본 이름
     int         parentIndex; // 부모 본 인덱스
 
-    // 바인드포즈 기준 로컬 행렬 (본 로컬)
-    // - 키가 없는 본은 이 값을 그대로 사용해서 포즈 유지
+    // 바인드포즈 기준 "로컬" 행렬 (본 로컬 공간)
+    //   - node->EvaluateLocalTransform(0) 결과를 저장해 둘 예정
     XMFLOAT4X4  bindLocal;
 
-    // inverse bind pose (모델 공간 → 본 공간)
-    // - FBX Skin(Cluster)에서 실제 값을 채워 넣는다.
-    XMFLOAT4X4  offsetMatrix; // Inverse Bind Pose (모델 공간 → 본 공간)
+    // inverse bind pose (모델 공간 -> 본 공간)
+    //   - FBX Skin(Cluster)에서 계산해서 채울 것
+    XMFLOAT4X4  offsetMatrix;
 };
 
+struct AnimationClip
+{
+    std::string name;            // 클립 이름 (예: "Idle", "Walk", "Jump")
+    float       duration = 0.f;  // 전체 길이(초)
+
+    // i번째 요소가 i번째 본의 트랙
+    std::vector<BoneKeyframes> boneTracks;
+
+    // 이름 -> 트랙 인덱스
+    std::unordered_map<std::string, int> boneNameToTrack;
+
+    // ★ skeleton을 인자로 받도록 시그니처 변경
+    void Evaluate(float timeSec,
+        const std::vector<Bone>& skeleton,
+        std::vector<XMFLOAT4X4>& outLocalTransforms) const;
+};
 
 struct SkinnedVertex
 {
     XMFLOAT3 position;
     XMFLOAT3 normal;
     XMFLOAT2 uv;
-    UINT boneIndices[4];     // 어떤 본들이 영향을 주는가
-    float boneWeights[4];    // 각 본의 영향 비율
+    UINT  boneIndices[4];
+    float boneWeights[4];
 };

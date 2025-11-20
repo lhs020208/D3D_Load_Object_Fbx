@@ -314,30 +314,33 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                     b.name = node->GetName();
                     b.parentIndex = parent;
 
-                    // 1) 바인드포즈 기준 로컬 행렬 저장
-                    //    - time=0 에서의 로컬 트랜스폼을 사용 (바인드포즈로 가정)
-                    FbxTime bindTime;
-                    bindTime.SetSecondDouble(0.0);
-                    FbxAMatrix localM = node->EvaluateLocalTransform(bindTime);
-
-                    XMFLOAT4X4 bindLocal{};
-                    for (int r = 0; r < 4; ++r)
+                    // 바인드포즈 기준 로컬 행렬 (본 로컬 공간)
                     {
-                        for (int c = 0; c < 4; ++c)
-                        {
-                            bindLocal.m[r][c] = static_cast<float>(localM.Get(r, c));
-                        }
-                    }
-                    b.bindLocal = bindLocal;
+                        FbxTime t0;
+                        t0.SetSecondDouble(0.0);
+                        FbxAMatrix localM = node->EvaluateLocalTransform(t0);
 
-                    // 2) inverse bind pose 는 나중에 Cluster에서 채울 것
+                        XMFLOAT4X4 mLocal{};
+                        for (int r = 0; r < 4; ++r)
+                        {
+                            mLocal.m[r][0] = static_cast<float>(localM.Get(r, 0));
+                            mLocal.m[r][1] = static_cast<float>(localM.Get(r, 1));
+                            mLocal.m[r][2] = static_cast<float>(localM.Get(r, 2));
+                            mLocal.m[r][3] = static_cast<float>(localM.Get(r, 3));
+                        }
+                        b.bindLocal = mLocal;
+                    }
+
+                    // inverse bind pose (모델 공간 -> 본 공간)
+                    //  - 나중에 FbxCluster::GetTransformMatrix / GetTransformLinkMatrix를 사용해서
+                    //    실제 inverse bind를 계산해 넣을 예정.
+                    //  - 지금은 임시로 identity로 초기화 (이미 3단계에서 따로 채우고 있으면 그 코드 유지).
                     XMStoreFloat4x4(&b.offsetMatrix, XMMatrixIdentity());
 
                     self = (int)m_Bones.size();
                     m_BoneNameToIndex[b.name] = self;
                     m_Bones.push_back(b);
                 }
-
             }
 
             for (int i = 0; i < node->GetChildCount(); ++i)

@@ -103,45 +103,48 @@ static void SampleBoneTrack(
 
 // ============================================================
 // AnimationClip::Evaluate
-//   - timeSec 시각에서 각 본의 "로컬 행렬"을 outLocalTransforms에 채움
-//   - 키가 없는 본은 기본 포즈(단위 TRS)를 사용한다.
-//   - bindLocal 은 Animator 쪽에서 덮어씌우도록 유지 (시그니처 변경 X)
+//   - timeSec 시각에서 각 본의 "로컬 행렬"을 outLocalTransforms 에 채움
+//   - 키프레임이 없는 본은 skeleton[i].bindLocal 사용
 // ============================================================
-void AnimationClip::Evaluate(float timeSec, std::vector<XMFLOAT4X4>& outLocalTransforms) const
+void AnimationClip::Evaluate(
+    float timeSec,
+    const std::vector<Bone>& skeleton,
+    std::vector<XMFLOAT4X4>& outLocalTransforms) const
 {
     const size_t trackCount = boneTracks.size();
-    if (trackCount == 0)
+    const size_t skeletonCount = skeleton.size();
+
+    // 트랙 자체가 없으면 아무 것도 안 함
+    if (trackCount == 0 || skeletonCount == 0)
     {
         outLocalTransforms.clear();
         return;
     }
 
-    // 출력 버퍼 크기 보정
-    if (outLocalTransforms.size() < trackCount)
-        outLocalTransforms.resize(trackCount);
+    // 안전 차원에서 둘 중 작은 쪽만 사용
+    const size_t boneCount = (trackCount < skeletonCount) ? trackCount : skeletonCount;
 
-    for (size_t i = 0; i < trackCount; ++i)
+    if (outLocalTransforms.size() < boneCount)
+        outLocalTransforms.resize(boneCount);
+
+    for (size_t i = 0; i < boneCount; ++i)
     {
         const BoneKeyframes& track = boneTracks[i];
 
+        // 이 본에 키프레임이 하나도 없으면 → bindLocal 사용
+        if (track.keyframes.empty())
+        {
+            outLocalTransforms[i] = skeleton[i].bindLocal;
+            continue;
+        }
+
+        // 키가 있는 본은 기존대로 TRS 보간
         XMFLOAT3 t;
         XMFLOAT4 r;
         XMFLOAT3 s;
 
-        if (track.keyframes.empty())
-        {
-            // 이 본은 키가 없으면 "기본 TRS" (identity) 로 남겨둔다.
-            // 실제 최종 포즈는 CAnimator::Update에서 skeleton[i].bindLocal 로 덮어씌움.
-            t = XMFLOAT3(0.f, 0.f, 0.f);
-            r = XMFLOAT4(0.f, 0.f, 0.f, 1.f);
-            s = XMFLOAT3(1.f, 1.f, 1.f);
-        }
-        else
-        {
-            // 키프레임 보간
-            SampleBoneTrack(track.keyframes, timeSec, t, r, s);
-        }
-
+        SampleBoneTrack(track.keyframes, timeSec, t, r, s);
         BuildTRSMatrix(t, r, s, outLocalTransforms[i]);
     }
 }
+
