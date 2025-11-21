@@ -29,7 +29,7 @@ cbuffer cbLightInfo : register(b3)
     float gf3LightColorX;
     float gf3LightColorY;
     float gf3LightColorZ;
-}; // ★ 세미콜론 추가
+}; // 세미콜론 추가
 
 static const uint MAX_BONES = 256;
 cbuffer cbBones : register(b4)
@@ -114,7 +114,7 @@ VS_OUTPUT VSLightingSkinned(VS_INPUT_SKINNED input)
         if (w <= 0.0001f)
             continue;
         if (b >= MAX_BONES)
-            continue; // ★ 안전한 범위 체크
+            continue; // 안전한 범위 체크
 
         float4x4 B = gBoneTransforms[b];
 
@@ -141,7 +141,7 @@ VS_OUTPUT VSLightingSkinned(VS_INPUT_SKINNED input)
     output.positionH = mul(mul(float4(output.positionW, 1.0f), gmtxView), gmtxProjection);
 
     float3 normalW = mul(localNormal, gmtxWorld).xyz;
-    normalW = normalize(normalW); // ★ 월드 노멀 정규화
+    normalW = normalize(normalW); // 월드 노멀 정규화
     output.normalW = normalW;
     output.normal = normalW; // 필요하면 여기서 localNormal.xyz 써도 됨
 

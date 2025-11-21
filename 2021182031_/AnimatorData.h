@@ -68,7 +68,7 @@ struct AnimationClip
     // 이름 -> 트랙 인덱스
     std::unordered_map<std::string, int> boneNameToTrack;
 
-    // ★ skeleton을 인자로 받도록 시그니처 변경
+    // skeleton을 인자로 받도록 시그니처 변경
     void Evaluate(float timeSec,
         const std::vector<Bone>& skeleton,
         std::vector<XMFLOAT4X4>& outLocalTransforms) const;

@@ -37,11 +37,10 @@ namespace
     }
 
     // 하나의 본 노드에 대해 BoneKeyframes 를 채운다.
-// 하나의 본 노드에 대해 BoneKeyframes 를 채운다.
     void ExtractBoneTrack(
         FbxNode* node,
         int boneIndex,
-        const std::vector<Bone>& bones,   // ★ 추가
+        const std::vector<Bone>& bones,
         FbxAnimLayer* layer,
         const FbxTimeSpan& timeSpan,
         float timeScale,
@@ -57,51 +56,72 @@ namespace
 
         BoneKeyframes& track = clip.boneTracks[boneIndex];
 
-        // 시작 시간을 0초로 두기 위해 기준값을 빼준다.
         const double startSec = timeSpan.GetStart().GetSecondDouble();
 
-        // ★ 여기서 skeleton(bones)에서 bindLocal 꺼내쓴다
+        // bindLocal은 이제 corrected 계산에 사용하지 않지만,
+        //   원래 로직을 남겨두기 위해 불러오기는 한다.
         const Bone& bone = bones[boneIndex];
+        XMMATRIX bind = XMLoadFloat4x4(&bone.bindLocal);
+        XMMATRIX bindInv = XMMatrixInverse(nullptr, bind);
 
         for (const FbxTime& t : keyTimes)
         {
             if (t < timeSpan.GetStart() || t > timeSpan.GetStop())
                 continue;
 
-            FbxAMatrix animLocal = node->EvaluateLocalTransform(t);
+            // =====================================================
+            // NEW: 순수 애니메이션 로컬 행렬(FBX local) 사용
+            // =====================================================
+            FbxAMatrix animLocalFBX = node->EvaluateLocalTransform(t);
 
-            // bindLocal 불러오기
-            XMMATRIX bind = XMLoadFloat4x4(&bone.bindLocal);
-            XMMATRIX bindInv = XMMatrixInverse(nullptr, bind);
-
-            // animLocal → XMMATRIX 변환
+            // animLocalFBX → XMFLOAT4X4 변환
             XMFLOAT4X4 animF{};
             for (int r = 0; r < 4; ++r)
-            {
                 for (int c = 0; c < 4; ++c)
-                    animF.m[r][c] = (float)animLocal.Get(r, c);
-            }
+                    animF.m[r][c] = (float)animLocalFBX.Get(r, c);
+
             XMMATRIX anim = XMLoadFloat4x4(&animF);
 
-            // ★ 좌표계 보정
-            XMMATRIX corrected = bindInv * anim * bind;
-
-            // TRS 분해
+            // =====================================================
+            // TRS 직접 분해
+            // =====================================================
             XMVECTOR S, R, T;
-            XMMatrixDecompose(&S, &R, &T, corrected);
-
-            double sec = t.GetSecondDouble() - startSec;
+            XMMatrixDecompose(&S, &R, &T, anim);
 
             Keyframe k;
+            double sec = t.GetSecondDouble() - startSec;
             k.timeSec = (float)(sec * timeScale);
+
             XMStoreFloat3(&k.translation, T);
             XMStoreFloat4(&k.rotationQuat, R);
-            k.scale = XMFLOAT3(1, 1, 1);
+
+            // scale 저장 (FBX scale도 유지되게)
+            XMFLOAT3 s;
+            XMStoreFloat3(&s, S);
+            k.scale = s;
 
             track.keyframes.push_back(k);
+
+            // =====================================================
+            // OLD LOGIC (잘못된 부분) ? 지우지 말고 보존
+            //     corrected = bindInv * anim * bind
+            // =====================================================
+            /*
+            XMMATRIX corrected = bindInv * anim * bind;
+
+            XMVECTOR S2, R2, T2;
+            XMMatrixDecompose(&S2, &R2, &T2, corrected);
+
+            Keyframe k_old;
+            k_old.timeSec = k.timeSec;
+            XMStoreFloat3(&k_old.translation, T2);
+            XMStoreFloat4(&k_old.rotationQuat, R2);
+            k_old.scale = XMFLOAT3(1,1,1);
+
+            // track.keyframes.push_back(k_old);
+            */
         }
 
-        // 혹시라도 타임이 뒤섞였을 경우를 대비해 정렬
         std::sort(track.keyframes.begin(), track.keyframes.end(),
             [](const Keyframe& a, const Keyframe& b)
             {
@@ -110,12 +130,12 @@ namespace
     }
 
 
+
     // 씬 트리 전체를 돌며 본 이름과 일치하는 노드에서 트랙을 뽑는다.
-// 씬 트리 전체를 돌며 본 이름과 일치하는 노드에서 트랙을 뽑는다.
     void TraverseAndExtractTracks(
         FbxNode* node,
         FbxAnimLayer* layer,
-        const std::vector<Bone>& bones,                       // ★ 추가
+        const std::vector<Bone>& bones,                       // 추가
         const std::unordered_map<std::string, int>& boneNameToIndex,
         const FbxTimeSpan& timeSpan,
         float timeScale,
@@ -130,7 +150,7 @@ namespace
         if (it != boneNameToIndex.end())
         {
             int boneIndex = it->second;
-            ExtractBoneTrack(node, boneIndex, bones,           // ★ bones 전달
+            ExtractBoneTrack(node, boneIndex, bones,           // bones 전달
                 layer, timeSpan, timeScale, clip);
         }
 
@@ -138,7 +158,7 @@ namespace
         for (int i = 0; i < childCount; ++i)
         {
             TraverseAndExtractTracks(node->GetChild(i), layer,
-                bones,                                         // ★ 전달
+                bones,                                         // 전달
                 boneNameToIndex, timeSpan, timeScale, clip);
         }
     }
@@ -708,7 +728,7 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
 
         sm.vbView.BufferLocation = sm.vb->GetGPUVirtualAddress();
         sm.vbView.SizeInBytes = vbSize;
-        sm.vbView.StrideInBytes = sizeof(SkinnedVertex); // ★ 64 bytes
+        sm.vbView.StrideInBytes = sizeof(SkinnedVertex); // 64 bytes
 
         // -------------------------
         // 8-3) Index Buffer 생성 (기존 그대로)
@@ -1353,7 +1373,7 @@ bool CMesh::LoadAnimationFromFBX(
     if (pRoot)
     {
         TraverseAndExtractTracks(pRoot, pLayer,
-            m_Bones,                // ★ skeleton 넘겨줌
+            m_Bones,                // skeleton 넘겨줌
             m_BoneNameToIndex,
             timeSpan, timeScale,
             outClip);

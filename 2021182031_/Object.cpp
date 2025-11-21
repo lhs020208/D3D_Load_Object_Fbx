@@ -144,7 +144,7 @@ void CGameObject::Render(ID3D12GraphicsCommandList* cmdList, CCamera* pCamera, C
 			CMesh* pMesh = m_ppMeshes[i];
 			if (!pMesh) continue;
 
-			// ★ 스키닝 메시이면 b4에 본 행렬 CBV 바인딩
+			// 스키닝 메시이면 b4에 본 행렬 CBV 바인딩
 			if (pMesh->IsSkinnedMesh() && pMesh->HasBoneCB())
 			{
 				D3D12_GPU_VIRTUAL_ADDRESS boneCB = pMesh->GetBoneCBAddress();

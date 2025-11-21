@@ -33,7 +33,7 @@ public:
 	int							move_z = 0;
 	int							move_x = 0;
 
-	// ---------- ★ 애니메이션 설정 관련 멤버 ----------
+	// ---------- 애니메이션 설정 관련 멤버 ----------
 protected:
 	std::string                 m_strDefaultAnimClip;     // 기본 재생 클립 이름
 	float                       m_fAnimPlaybackSpeed = 1.0f; // 재생 속도 배율
@@ -93,7 +93,7 @@ public:
 	virtual void Render(ID3D12GraphicsCommandList* cmdList, CCamera* pCamera, CScene* pScene);
 	XMFLOAT3 LastUpVector = GetUp();  // 초기화 필요
 
-	// ---------- ★ 애니메이션 제어용 인터페이스 ----------
+	// ---------- 애니메이션 제어용 인터페이스 ----------
 	// 기본 재생 클립/속도/루프 여부 세팅
 	void SetDefaultAnimation(const std::string& clipName,
 		float playbackSpeed = 1.0f,
