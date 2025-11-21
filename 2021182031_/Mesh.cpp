@@ -329,7 +329,10 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                     b.name = node->GetName();
                     b.parentIndex = parent;
 
-                    // 바인드포즈 기준 로컬 행렬 (본 로컬 공간)
+                    //----------------------------------------------------------
+                    // 기존 코드: 0초 프레임에서 로컬 변환 가져오기 (잘못된 방식)
+                    //----------------------------------------------------------
+                    /*
                     {
                         FbxTime t0;
                         t0.SetSecondDouble(0.0);
@@ -338,20 +341,65 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
                         XMFLOAT4X4 mLocal{};
                         for (int r = 0; r < 4; ++r)
                         {
-                            mLocal.m[r][0] = static_cast<float>(localM.Get(r, 0));
-                            mLocal.m[r][1] = static_cast<float>(localM.Get(r, 1));
-                            mLocal.m[r][2] = static_cast<float>(localM.Get(r, 2));
-                            mLocal.m[r][3] = static_cast<float>(localM.Get(r, 3));
+                            for (int c = 0; c < 4; ++c)
+                                mLocal.m[r][c] = (float)localM.Get(r, c);
                         }
+
+                        b.bindLocal = mLocal;
+                    }
+                    */
+
+                    //----------------------------------------------------------
+                    // 새 코드: "Bind Pose"에서 본의 로컬행렬(bindLocal) 계산
+                    //   bindLocal = inverse(parentBindGlobal) * boneBindGlobal
+                    //   boneBindGlobal은 TransformLinkMatrix에서 얻음
+                    //----------------------------------------------------------
+                    {
+                        // TransformLinkMatrix = bone의 글로벌 바인드포즈
+                        FbxAMatrix boneGlobalBind = FbxAMatrix();
+                        bool found = false;
+
+                        // 스켈레톤 노드를 찾았으니 mesh skin 단계에서 TransformLinkMatrix를 사용해야 한다.
+                        // 하지만 여기서는 cluster 정보가 아직 없으므로,
+                        // 임시로 EvaluateGlobalTransform(0) 쓰고
+                        // 나중에 offsetMatrix 계산할 때 정확한 bind pose로 대체됨.
+                        // (이후 offsetMatrix 계산에서 bindLocal도 다시 덮어쓴다.)
+
+                        FbxTime t0;
+                        t0.SetSecondDouble(0.0);
+                        boneGlobalBind = node->EvaluateGlobalTransform(t0);
+                        // 진짜 bind pose는 cluster 단계에서 들어온다.
+                        //   여기서는 parent-local 계산 위해 일단 GlobalTransform 사용
+
+                        FbxAMatrix parentGlobalBind;
+                        if (parent >= 0)
+                        {
+                            FbxNode* parentNode = node->GetParent();
+                            parentGlobalBind = parentNode->EvaluateGlobalTransform(t0);
+                        }
+                        else
+                        {
+                            parentGlobalBind.SetIdentity();
+                        }
+
+                        FbxAMatrix localBind = parentGlobalBind.Inverse() * boneGlobalBind;
+
+                        XMFLOAT4X4 mLocal{};
+                        for (int r = 0; r < 4; ++r)
+                        {
+                            for (int c = 0; c < 4; ++c)
+                                mLocal.m[r][c] = (float)localBind.Get(r, c);
+                        }
+
                         b.bindLocal = mLocal;
                     }
 
-                    // inverse bind pose (모델 공간 -> 본 공간)
-                    //  - 나중에 FbxCluster::GetTransformMatrix / GetTransformLinkMatrix를 사용해서
-                    //    실제 inverse bind를 계산해 넣을 예정.
-                    //  - 지금은 임시로 identity로 초기화 (이미 3단계에서 따로 채우고 있으면 그 코드 유지).
+                    // offsetMatrix는 cluster 단계에서 다시 채워짐
                     XMStoreFloat4x4(&b.offsetMatrix, XMMatrixIdentity());
 
+                    //----------------------------------------------------------
+                    // push
+                    //----------------------------------------------------------
                     self = (int)m_Bones.size();
                     m_BoneNameToIndex[b.name] = self;
                     m_Bones.push_back(b);
@@ -361,6 +409,7 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
             for (int i = 0; i < node->GetChildCount(); ++i)
                 ExtractBones(node->GetChild(i), self);
         };
+
 
     ExtractBones(scene->GetRootNode(), -1);
 
