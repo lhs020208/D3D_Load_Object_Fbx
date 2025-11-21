@@ -105,11 +105,8 @@ static void SampleBoneTrack(
 // AnimationClip::Evaluate
 //   - timeSec 시각에서 각 본의 "로컬 행렬(animLocal)"을 outLocalTransforms 에 채움
 //   - 키프레임이 없는 본은 skeleton[i].bindLocal 사용
-//   - 트랙에 저장된 행렬은 ExtractBoneTrack()에서
-//       corrected = bindInv * anim * bind
-//     형태이므로, 여기서
-//       anim = bind * corrected * bindInv
-//     로 되돌린다.
+//   - 수정: 더 이상 corrected = bindInv * anim * bind 형식 사용 안 함
+//            SampleBoneTrack 의 TRS를 "그대로 로컬 변환"으로 사용.
 // ============================================================
 void AnimationClip::Evaluate(
     float timeSec,
@@ -119,19 +116,26 @@ void AnimationClip::Evaluate(
     const size_t trackCount = boneTracks.size();
     const size_t skeletonCount = skeleton.size();
 
-    if (trackCount == 0 || skeletonCount == 0)
+    if (skeletonCount == 0)
     {
         outLocalTransforms.clear();
         return;
     }
 
-    const size_t boneCount = (trackCount < skeletonCount) ? trackCount : skeletonCount;
+    // skeleton 크기에 맞춰 outLocalTransforms 준비
+    if (outLocalTransforms.size() < skeletonCount)
+        outLocalTransforms.resize(skeletonCount);
 
-    if (outLocalTransforms.size() < boneCount)
-        outLocalTransforms.resize(boneCount);
-
-    for (size_t i = 0; i < boneCount; ++i)
+    for (size_t i = 0; i < skeletonCount; ++i)
     {
+        // 트랙 개수가 skeleton보다 적을 수도 있으니 체크
+        if (i >= trackCount)
+        {
+            // 이 본에 대한 트랙이 없으면 bindLocal 그대로
+            outLocalTransforms[i] = skeleton[i].bindLocal;
+            continue;
+        }
+
         const BoneKeyframes& track = boneTracks[i];
 
         // 키가 없는 본 → 그대로 bindLocal (T포즈)
@@ -141,13 +145,25 @@ void AnimationClip::Evaluate(
             continue;
         }
 
-        // 키가 있는 본 → 트랙의 행렬은
-        //   corrected = bindInv * anim * bind
-        // 형태이므로, 여기서 animLocal을 복원한다.
+        // ====================================================
+        //  새 로직: TRS를 "그대로 로컬 변환"으로 사용
+        //      - SampleBoneTrack: 이 시점의 t/r/s (bone local space)
+        //      - BuildTRSMatrix: t,r,s → local matrix
+        // ====================================================
         XMFLOAT3 t;
         XMFLOAT4 r;
         XMFLOAT3 s;
 
+        SampleBoneTrack(track.keyframes, timeSec, t, r, s);
+
+        XMFLOAT4X4 localM;
+        BuildTRSMatrix(t, r, s, localM);
+
+        outLocalTransforms[i] = localM;
+
+        // ====================================================
+        //  기존 잘못된 로직 (bind 보정/corrected 사용) ? 보존용으로 주석 
+        /*
         // track.keyframes 안에는 "corrected" 공간의 TRS가 들어있다.
         SampleBoneTrack(track.keyframes, timeSec, t, r, s);
 
@@ -156,13 +172,17 @@ void AnimationClip::Evaluate(
         BuildTRSMatrix(t, r, s, correctedLocal);
 
         // bind / bindInv
-        XMMATRIX bindM = XMLoadFloat4x4(&skeleton[i].bindLocal);
+        XMMATRIX bindM    = XMLoadFloat4x4(&skeleton[i].bindLocal);
         XMMATRIX bindInvM = XMMatrixInverse(nullptr, bindM);
-        XMMATRIX corrM = XMLoadFloat4x4(&correctedLocal);
+        XMMATRIX corrM    = XMLoadFloat4x4(&correctedLocal);
 
         // animLocal = bind * corrected * bindInv
         XMMATRIX animM = bindM * corrM * bindInvM;
 
         XMStoreFloat4x4(&outLocalTransforms[i], animM);
+        */
+        //  기존 잘못된 로직 끝 
+        // ====================================================
     }
 }
+
