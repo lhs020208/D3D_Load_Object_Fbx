@@ -103,8 +103,13 @@ static void SampleBoneTrack(
 
 // ============================================================
 // AnimationClip::Evaluate
-//   - timeSec 시각에서 각 본의 "로컬 행렬"을 outLocalTransforms 에 채움
+//   - timeSec 시각에서 각 본의 "로컬 행렬(animLocal)"을 outLocalTransforms 에 채움
 //   - 키프레임이 없는 본은 skeleton[i].bindLocal 사용
+//   - 트랙에 저장된 행렬은 ExtractBoneTrack()에서
+//       corrected = bindInv * anim * bind
+//     형태이므로, 여기서
+//       anim = bind * corrected * bindInv
+//     로 되돌린다.
 // ============================================================
 void AnimationClip::Evaluate(
     float timeSec,
@@ -114,14 +119,12 @@ void AnimationClip::Evaluate(
     const size_t trackCount = boneTracks.size();
     const size_t skeletonCount = skeleton.size();
 
-    // 트랙 자체가 없으면 아무 것도 안 함
     if (trackCount == 0 || skeletonCount == 0)
     {
         outLocalTransforms.clear();
         return;
     }
 
-    // 안전 차원에서 둘 중 작은 쪽만 사용
     const size_t boneCount = (trackCount < skeletonCount) ? trackCount : skeletonCount;
 
     if (outLocalTransforms.size() < boneCount)
@@ -131,20 +134,35 @@ void AnimationClip::Evaluate(
     {
         const BoneKeyframes& track = boneTracks[i];
 
-        // 이 본에 키프레임이 하나도 없으면 → bindLocal 사용
+        // 키가 없는 본 → 그대로 bindLocal (T포즈)
         if (track.keyframes.empty())
         {
             outLocalTransforms[i] = skeleton[i].bindLocal;
             continue;
         }
 
-        // 키가 있는 본은 기존대로 TRS 보간
+        // 키가 있는 본 → 트랙의 행렬은
+        //   corrected = bindInv * anim * bind
+        // 형태이므로, 여기서 animLocal을 복원한다.
         XMFLOAT3 t;
         XMFLOAT4 r;
         XMFLOAT3 s;
 
+        // track.keyframes 안에는 "corrected" 공간의 TRS가 들어있다.
         SampleBoneTrack(track.keyframes, timeSec, t, r, s);
-        BuildTRSMatrix(t, r, s, outLocalTransforms[i]);
+
+        // corrected 로컬 행렬
+        XMFLOAT4X4 correctedLocal;
+        BuildTRSMatrix(t, r, s, correctedLocal);
+
+        // bind / bindInv
+        XMMATRIX bindM = XMLoadFloat4x4(&skeleton[i].bindLocal);
+        XMMATRIX bindInvM = XMMatrixInverse(nullptr, bindM);
+        XMMATRIX corrM = XMLoadFloat4x4(&correctedLocal);
+
+        // animLocal = bind * corrected * bindInv
+        XMMATRIX animM = bindM * corrM * bindInvM;
+
+        XMStoreFloat4x4(&outLocalTransforms[i], animM);
     }
 }
-

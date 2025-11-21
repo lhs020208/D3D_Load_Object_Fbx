@@ -393,6 +393,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 			1.0f                           // timeScale (필요하면 조정)
 		);
 
+
 		if (animLoaded)
 		{
 			// 혹시 로더에서 name 안 채우면 안전하게 한 번 더

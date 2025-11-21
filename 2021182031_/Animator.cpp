@@ -97,7 +97,8 @@ void CAnimator::Update(float dt)
 
     // 시간 증가
     //m_fCurrentTime += dt;
-    m_fCurrentTime += 0.001f;
+    //m_fCurrentTime += 0.001f;
+
 
     if (m_fCurrentTime > m_pCurrentClip->duration)
     {
@@ -108,14 +109,17 @@ void CAnimator::Update(float dt)
     const int boneCount = (int)m_Skeleton.size();
     if (boneCount <= 0) return;
 
+    
     // 1) 로컬 포즈 계산
     m_pCurrentClip->Evaluate(
         m_fCurrentTime,
         m_Skeleton,
         m_LocalPose
     );
+    
 
     // 2) 글로벌 포즈 계산 (부모-자식 연결)
+    
     for (int i = 0; i < boneCount; ++i)
     {
         int parent = m_Skeleton[i].parentIndex;
@@ -134,7 +138,8 @@ void CAnimator::Update(float dt)
             XMStoreFloat4x4(&m_GlobalPose[i], global);
         }
     }
-
+    
+    
     // 3) 최종 본 행렬 = offsetMatrix * globalTransform
     for (int i = 0; i < boneCount; ++i)
     {
@@ -144,6 +149,8 @@ void CAnimator::Update(float dt)
         XMMATRIX skin = offset * global;
         XMStoreFloat4x4(&m_FinalBoneMatrices[i], skin);
     }
+    
+    
 }
 
 
