@@ -96,7 +96,7 @@ void CAnimator::Update(float dt)
         return;
 
     // 시간 증가
-    m_fCurrentTime += dt;
+    //m_fCurrentTime += dt;
     //m_fCurrentTime += 0.001f;
 
 
@@ -111,6 +111,7 @@ void CAnimator::Update(float dt)
 
     
     // 1) 로컬 포즈 계산
+    
     m_pCurrentClip->Evaluate(
         m_fCurrentTime,
         m_Skeleton,
