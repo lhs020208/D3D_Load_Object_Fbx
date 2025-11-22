@@ -593,49 +593,48 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
                 int cpIdx = mesh->GetPolygonVertex(p, idx[k]);
                 if (cpIdx < 0 || cpIdx >= cpCount) continue;
 
-                FbxVector4 pos = cp[cpIdx];
+                // 1) 메시 로컬 좌표
+                FbxVector4 cpLocal = cp[cpIdx];
 
-                //pos = invBaseBind.MultT(pos);
-                if (meshHasSkin[mi])
-                {
-                    // skinned mesh → 변환 없음
-                }
-                else
-                {
-                    // non-skinned mesh
-                    FbxAMatrix corr =
-                        boneGlobalBind[attachedBoneIndex].Inverse() * baseMeshGlobalBind;
-                    pos = corr.MultT(pos);
-                }
+                // 2) 노드의 글로벌 트랜스폼
+                FbxAMatrix nodeGlobalM = node ? node->EvaluateGlobalTransform() : FbxAMatrix();
+                if (!node) nodeGlobalM.SetIdentity();
+
+                // 3) 월드(글로벌) 좌표로 변환
+                FbxVector4 posGlobal = nodeGlobalM.MultT(cpLocal);
+
+                // 4) baseMesh의 bind 공간으로 변환
+                FbxVector4 pos = invBaseBind.MultT(posGlobal);
 
                 sm.positions.push_back(ToXM3(pos));
 
-                FbxVector4 n;
-                mesh->GetPolygonVertexNormal(p, idx[k], n);
-                sm.normals.push_back(ToXM3(n));
+                // 노멀도 같은 방식으로 대략 맞춰준다
+                FbxVector4 nLocal;
+                mesh->GetPolygonVertexNormal(p, idx[k], nLocal);
+                FbxVector4 n4(nLocal[0], nLocal[1], nLocal[2], 0.0);
 
-                // UV는 나중에 다시 복구할 수 있으니, 지금은 0,0으로 둠
+                // 글로벌 → baseMesh bind 공간
+                FbxVector4 nGlobal = nodeGlobalM.MultT(n4);
+                FbxVector4 nBase = invBaseBind.MultT(nGlobal);
+
+                sm.normals.push_back(ToXM3(nBase));
+
+                // UV, 인덱스, non-skinned bone weight 세팅 부분은 그대로 유지
                 sm.uvs.push_back(XMFLOAT2(0, 0));
-
                 sm.indices.push_back((UINT)sm.indices.size());
-
-                // ---------------------------
-                // non-skinned mesh → attachedBoneIndex에 weight=1
-                // ---------------------------
                 if (!meshHasSkin[mi])
                 {
-                    XMUINT4 bi(0, 0, 0, 0);
+                    XMUINT4  bi(0, 0, 0, 0);
                     XMFLOAT4 bw(0, 0, 0, 0);
-
                     if (attachedBoneIndex >= 0)
                     {
                         bi.x = (UINT)attachedBoneIndex;
                         bw.x = 1.0f;
                     }
-
                     sm.boneIndices.push_back(bi);
                     sm.boneWeights.push_back(bw);
                 }
+
             }
         }
 
