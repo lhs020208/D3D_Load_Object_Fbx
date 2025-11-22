@@ -208,7 +208,7 @@ void CPlayer::SetCameraOffset(XMFLOAT3& xmf3CameraOffset)
 
 	// 위를 더 보게 하고 싶으면 Y만 살짝 올리면 됨
 	XMFLOAT3 target = m_xmf3Position;
-	target.y += 100.0f;   // ← 여기가 lookAt 조정 부분
+	target.y += -100.0f;   // ← 여기가 lookAt 조정 부분
 
 	m_pCamera->SetLookAt(camPos, target, m_xmf3Up);
 	m_pCamera->GenerateViewMatrix();

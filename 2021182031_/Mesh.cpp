@@ -285,7 +285,16 @@ void CMesh::Render(ID3D12GraphicsCommandList* cmd)
 void CMesh::LoadMeshFromOBJ(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, char* filename)
 {
 }
-void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const char* filename)
+// ===============================================================================================
+//  LoadMeshFromFBX (FINAL VERSION)
+//  - 자동 base-mesh 선택
+//  - bind pose alignment 적용
+//  - non-skinned mesh 자동 정렬
+//  - skin mesh vertex 좌표계를 bind pose 기준으로 통일
+// ===============================================================================================
+void CMesh::LoadMeshFromFBX(ID3D12Device* device,
+    ID3D12GraphicsCommandList* cmdList,
+    const char* filename)
 {
     // -----------------------------------------------------------------------------
     // 0) FBX 초기화
@@ -295,8 +304,9 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
     mgr->SetIOSettings(ios);
 
     FbxImporter* imp = FbxImporter::Create(mgr, "");
-    if (!imp->Initialize(filename, -1, mgr->GetIOSettings())) { imp->Destroy(); mgr->Destroy(); return; }
-
+    if (!imp->Initialize(filename, -1, mgr->GetIOSettings())) {
+        imp->Destroy(); mgr->Destroy(); return;
+    }
     FbxScene* scene = FbxScene::Create(mgr, "scene");
     imp->Import(scene);
     imp->Destroy();
@@ -316,141 +326,165 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
     }
 
     // -----------------------------------------------------------------------------
-    // 3) 모든 Mesh 수집
+    // 3) 모든 Mesh 수집 + 스킨 여부 파악
     // -----------------------------------------------------------------------------
     vector<FbxMesh*> meshes;
+    vector<bool> meshHasSkin;
+    vector<int> meshVertexCount;
+
     function<void(FbxNode*)> dfs = [&](FbxNode* n)
         {
             if (!n) return;
-            if (auto* m = n->GetMesh()) meshes.push_back(m);
-            for (int i = 0; i < n->GetChildCount(); ++i) dfs(n->GetChild(i));
+            if (auto* m = n->GetMesh()) {
+                meshes.push_back(m);
+                meshHasSkin.push_back(m->GetDeformerCount(FbxDeformer::eSkin) > 0);
+                meshVertexCount.push_back(m->GetControlPointsCount());
+            }
+            for (int i = 0; i < n->GetChildCount(); ++i)
+                dfs(n->GetChild(i));
         };
     dfs(scene->GetRootNode());
     if (meshes.empty()) { mgr->Destroy(); return; }
 
     // -----------------------------------------------------------------------------
-    // 4) 본 스켈레톤 추출
-    //    - Bone.offsetMatrix는 "inverse bind pose (model → bone)" 용도로 사용한다.
-    //    - 지금은 임시로 identity를 넣고, 나중에 Skin(Cluster)에서 실제 값을 채울 것.
+    // 4) Bone skeleton 수집
     // -----------------------------------------------------------------------------
     m_Bones.clear();
     m_BoneNameToIndex.clear();
 
-    function<void(FbxNode*, int)> ExtractBones = [&](FbxNode* node, int parentIndex)
+    function<void(FbxNode*, int)> ExtractBones = [&](FbxNode* node, int parentIdx)
         {
             if (!node) return;
+            FbxNodeAttribute* attr = node->GetNodeAttribute();
 
-            auto* attr = node->GetNodeAttribute();
-            int myIndex = parentIndex;
-
-            if (attr && attr->GetAttributeType() == FbxNodeAttribute::eSkeleton)
-            {
+            int myIdx = parentIdx;
+            if (attr && attr->GetAttributeType() == FbxNodeAttribute::eSkeleton) {
                 Bone b{};
                 b.name = node->GetName();
-                b.parentIndex = parentIndex;
-
+                b.parentIndex = parentIdx;
                 XMStoreFloat4x4(&b.bindLocal, XMMatrixIdentity());
                 XMStoreFloat4x4(&b.offsetMatrix, XMMatrixIdentity());
-
-                myIndex = (int)m_Bones.size();
-                m_BoneNameToIndex[b.name] = myIndex;
+                myIdx = (int)m_Bones.size();
+                m_BoneNameToIndex[b.name] = myIdx;
                 m_Bones.push_back(b);
             }
-
             for (int i = 0; i < node->GetChildCount(); ++i)
-                ExtractBones(node->GetChild(i), myIndex);
+                ExtractBones(node->GetChild(i), myIdx);
         };
-
     ExtractBones(scene->GetRootNode(), -1);
-    // ============================================================================
-    // (NEW) 4-A) Cluster 기반 bind pose 행렬 수집
-    //      - meshGlobalBind
-    //      - boneGlobalBind[i]
-    // ============================================================================
-    std::vector<FbxAMatrix> boneGlobalBind(m_Bones.size());
-    std::vector<bool> boneHasBind(m_Bones.size(), false);
 
-    FbxAMatrix meshGlobalBind;
-    bool meshBindValid = false;
+    // -----------------------------------------------------------------------------
+    // 5) base-mesh 자동 선택 (가장 큰 vertex count를 가진 skinned mesh)
+    // -----------------------------------------------------------------------------
+    int baseMeshIndex = -1;
+    int maxVerts = -1;
 
-    for (FbxMesh* m : meshes)
+    for (int i = 0; i < meshes.size(); ++i) {
+        if (!meshHasSkin[i]) continue;
+        if (meshVertexCount[i] > maxVerts) {
+            maxVerts = meshVertexCount[i];
+            baseMeshIndex = i;
+        }
+    }
+
+    if (baseMeshIndex < 0) {
+        // 스키닝 없는 모델: 그대로 그리면 됨
+        baseMeshIndex = 0;
+    }
+
+    FbxMesh* baseMesh = meshes[baseMeshIndex];
+    FbxNode* baseNode = baseMesh->GetNode();
+
+    // base mesh global bind pose
+    FbxAMatrix baseMeshGlobalBind;
+    bool baseBindValid = false;
+
+    // -----------------------------------------------------------------------------
+    // 6) cluster 기반 bone global bind pose 수집
+    // -----------------------------------------------------------------------------
+    int boneCount = m_Bones.size();
+    vector<FbxAMatrix> boneGlobalBind(boneCount);
+    vector<bool> boneHasBind(boneCount, false);
+
+    for (int m = 0; m < meshes.size(); ++m)
     {
-        if (!m) continue;
-
-        int skinCount = m->GetDeformerCount(FbxDeformer::eSkin);
+        FbxMesh* mesh = meshes[m];
+        int skinCount = mesh->GetDeformerCount(FbxDeformer::eSkin);
         for (int s = 0; s < skinCount; ++s)
         {
-            FbxSkin* skin = static_cast<FbxSkin*>(m->GetDeformer(s, FbxDeformer::eSkin));
-            if (!skin) continue;
-
+            FbxSkin* skin = (FbxSkin*)mesh->GetDeformer(s, FbxDeformer::eSkin);
             int clusterCount = skin->GetClusterCount();
+
             for (int c = 0; c < clusterCount; ++c)
             {
                 FbxCluster* cluster = skin->GetCluster(c);
-                if (!cluster) continue;
 
-                // Bone node
-                FbxNode* linkNode = cluster->GetLink();
-                if (!linkNode) continue;
+                FbxNode* link = cluster->GetLink();
+                if (!link) continue;
 
-                auto it = m_BoneNameToIndex.find(linkNode->GetName());
+                auto it = m_BoneNameToIndex.find(link->GetName());
                 if (it == m_BoneNameToIndex.end()) continue;
 
-                int boneIndex = it->second;
+                int b = it->second;
 
-                // Mesh Global Bind Pose
-                if (!meshBindValid)
-                {
-                    cluster->GetTransformMatrix(meshGlobalBind);
-                    meshGlobalBind.SetS(FbxVector4(1, 1, 1));
-                    meshBindValid = true;
+                // bone global bind pose
+                FbxAMatrix bind;
+                cluster->GetTransformLinkMatrix(bind);
+                bind.SetS(FbxVector4(1, 1, 1));
+                boneGlobalBind[b] = bind;
+                boneHasBind[b] = true;
+
+                // base mesh bind pose
+                if (!baseBindValid) {
+                    cluster->GetTransformMatrix(baseMeshGlobalBind);
+                    baseMeshGlobalBind.SetS(FbxVector4(1, 1, 1));
+                    baseBindValid = true;
                 }
-
-                // Bone Global Bind Pose
-                FbxAMatrix boneM;
-                cluster->GetTransformLinkMatrix(boneM);
-                boneM.SetS(FbxVector4(1, 1, 1));
-
-                boneGlobalBind[boneIndex] = boneM;
-                boneHasBind[boneIndex] = true;
             }
         }
     }
 
-    // ============================================================================
-    // (NEW) 4-B) bindLocal 계산: bindLocal = inverse(parentGlobalBind) * boneGlobalBind
-    // ============================================================================
-    for (int i = 0; i < m_Bones.size(); ++i)
+    if (!baseBindValid)
+        baseMeshGlobalBind.SetIdentity();
+
+    FbxAMatrix invBaseBind = baseMeshGlobalBind.Inverse();
+
+    // -----------------------------------------------------------------------------
+    // 7) bindLocal 계산
+    // -----------------------------------------------------------------------------
+    for (int i = 0; i < boneCount; ++i)
     {
-        if (!boneHasBind[i]) continue;
+        if (!boneHasBind[i]) {
+            // non-skinned bone (rare)
+            FbxAMatrix I; I.SetIdentity();
+            boneGlobalBind[i] = I;
+            boneHasBind[i] = true;
+        }
 
-        int parent = m_Bones[i].parentIndex;
+        int p = m_Bones[i].parentIndex;
 
-        FbxAMatrix parentBind;
-        if (parent >= 0 && boneHasBind[parent])
-            parentBind = boneGlobalBind[parent];
+        FbxAMatrix parentM;
+        if (p >= 0 && boneHasBind[p])
+            parentM = boneGlobalBind[p];
         else
-            parentBind.SetIdentity();
+            parentM.SetIdentity();
 
-        FbxAMatrix localBind = parentBind.Inverse() * boneGlobalBind[i];
+        FbxAMatrix local = parentM.Inverse() * boneGlobalBind[i];
 
         XMFLOAT4X4 xm{};
         for (int r = 0; r < 4; ++r)
             for (int c = 0; c < 4; ++c)
-                xm.m[r][c] = (float)localBind.Get(r, c);
+                xm.m[r][c] = (float)local.Get(r, c);
 
         m_Bones[i].bindLocal = xm;
     }
 
-    // ============================================================================
-    // (NEW) 4-C) offsetMatrix 계산: offset = inverse(boneGlobalBind) * meshGlobalBind
-    // ============================================================================
-    for (int i = 0; i < m_Bones.size(); ++i)
+    // -----------------------------------------------------------------------------
+    // 8) offsetMatrix = inverse(boneBind) * baseMeshBind
+    // -----------------------------------------------------------------------------
+    for (int i = 0; i < boneCount; ++i)
     {
-        if (!boneHasBind[i]) continue;
-
-        FbxAMatrix off = boneGlobalBind[i].Inverse() * meshGlobalBind;
-
+        FbxAMatrix off = boneGlobalBind[i].Inverse() * baseMeshGlobalBind;
         XMFLOAT4X4 xm{};
         for (int r = 0; r < 4; ++r)
             for (int c = 0; c < 4; ++c)
@@ -458,59 +492,30 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
 
         m_Bones[i].offsetMatrix = xm;
     }
-    // ============================================================================
-    // (NEW) vertex 좌표를 'mesh bind pose local'로 맞추기 위해 inverse(meshGlobalBind) 준비
-    // ============================================================================
-    FbxAMatrix invMeshBind = meshGlobalBind.Inverse();
 
     // -----------------------------------------------------------------------------
-    // 5) SubMesh 로 변환 (핵심)
+    // 9) SubMesh 생성
     // -----------------------------------------------------------------------------
     m_SubMeshes.clear();
 
     auto ToXM3 = [&](const FbxVector4& v) { return XMFLOAT3((float)v[0], (float)v[1], (float)v[2]); };
     auto ToXM2 = [&](const FbxVector2& v) { return XMFLOAT2((float)v[0], (float)v[1]); };
 
-    for (FbxMesh* mesh : meshes)
+    for (int mi = 0; mi < meshes.size(); ++mi)
     {
+        FbxMesh* mesh = meshes[mi];
         if (!mesh) continue;
-
-        int polyCount = mesh->GetPolygonCount();
-        int cpCount = mesh->GetControlPointsCount();
-        if (!polyCount || !cpCount) continue;
 
         SubMesh sm;
 
-        // =======================================================
-        // Mesh / Material 이름
-        // =======================================================
-        if (FbxNode* node = mesh->GetNode())
-        {
-            sm.meshName = node->GetName();
-        }
-        else
-        {
-            sm.meshName = "UnnamedMesh";
-        }
-
-        int materialCount = mesh->GetNode() ? mesh->GetNode()->GetMaterialCount() : 0;
-        if (materialCount > 0)
-        {
-            FbxSurfaceMaterial* mat = mesh->GetNode()->GetMaterial(0);
-            sm.materialName = mat ? mat->GetName() : "UnnamedMaterial";
-        }
-        else
-        {
-            sm.materialName = "NoMaterial";
-        }
-
-        // ───── flip 판단용으로만 global*geo 계산 ─────
+        // 이름
         FbxNode* node = mesh->GetNode();
-        FbxAMatrix global = node ? node->EvaluateGlobalTransform() : FbxAMatrix();
+        sm.meshName = node ? node->GetName() : "Unnamed";
 
+        // flip detection
+        FbxAMatrix global = node ? node->EvaluateGlobalTransform() : FbxAMatrix();
         FbxAMatrix geo;
-        if (node)
-        {
+        if (node) {
             geo.SetT(node->GetGeometricTranslation(FbxNode::eSourcePivot));
             geo.SetR(node->GetGeometricRotation(FbxNode::eSourcePivot));
             geo.SetS(node->GetGeometricScaling(FbxNode::eSourcePivot));
@@ -518,100 +523,44 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
         FbxAMatrix xform = global * geo;
         bool flip = (xform.Determinant() < 0);
 
-        // UVSet 이름
-        FbxStringList uvSets;
-        mesh->GetUVSetNames(uvSets);
-        const char* uvSetName = (uvSets.GetCount() > 0) ? uvSets.GetStringAt(0) : nullptr;
+        // 정점 변환
+        int polyCount = mesh->GetPolygonCount();
+        int cpCount = mesh->GetControlPointsCount();
+        FbxVector4* cp = mesh->GetControlPoints();
 
-        // ───── 정점 생성: cp(메시 로컬) 기준으로 저장 ─────
         for (int p = 0; p < polyCount; ++p)
         {
-            int order[3] = { 0, 1, 2 };
-            if (flip) std::swap(order[1], order[2]);
+            int idx[3] = { 0,1,2 };
+            if (flip) std::swap(idx[1], idx[2]);
 
-            for (int oi = 0; oi < 3; ++oi)
+            for (int k = 0; k < 3; ++k)
             {
-                int v = order[oi];
-                int cpIdx = mesh->GetPolygonVertex(p, v);
+                int cpIdx = mesh->GetPolygonVertex(p, idx[k]);
 
-                // 1) 위치: 컨트롤 포인트(cp)를 그대로 사용 (메시 로컬 공간)
-                FbxVector4 cp = mesh->GetControlPointAt(cpIdx);
-                FbxVector4 pw = invMeshBind.MultT(cp);   // FBX 표준 bind pose local 공간으로 변환
+                FbxVector4 pos = cp[cpIdx];
 
-                // 2) 노멀: 메시 로컬 노멀 → 정규화
+                // 여기서 모든 mesh (skinned / non-skinned)를
+                // baseMesh bind pose 기준으로 정렬
+                pos = invBaseBind.MultT(pos);
+
+                sm.positions.push_back(ToXM3(pos));
+
                 FbxVector4 n;
-                mesh->GetPolygonVertexNormal(p, v, n);
-                FbxVector4 nw(n[0], n[1], n[2], 0.0);
-
-                double L = sqrt(nw[0] * nw[0] + nw[1] * nw[1] + nw[2] * nw[2]);
-                if (L > 1e-12)
-                {
-                    nw[0] /= L;
-                    nw[1] /= L;
-                    nw[2] /= L;
-                }
-
-                // 3) UV
-                XMFLOAT2 uv(0, 0);
-                if (uvSetName)
-                {
-                    FbxVector2 u;
-                    bool unmapped = false;
-                    if (mesh->GetPolygonVertexUV(p, v, uvSetName, u, unmapped))
-                    {
-                        uv = ToXM2(u);
-                        uv.y = 1.0f - uv.y; // DirectX용 V 뒤집기
-                    }
-                }
-
-                sm.positions.push_back(ToXM3(pw));
-                sm.normals.push_back(ToXM3(nw));
-                sm.uvs.push_back(uv);
+                mesh->GetPolygonVertexNormal(p, idx[k], n);
+                sm.normals.push_back(ToXM3(n));
+                sm.uvs.push_back(XMFLOAT2(0, 0));
 
                 sm.indices.push_back((UINT)sm.indices.size());
             }
         }
 
-        // 스킨 가중치는 cp 기준으로 FillSkinWeights 쪽에서 채움
+        // bone weight
         FillSkinWeights(mesh, sm);
-
         m_SubMeshes.push_back(sm);
     }
 
-
     // -----------------------------------------------------------------------------
-    // 6) 원래 OBB 계산 기능 유지
-    // -----------------------------------------------------------------------------
-    if (!m_SubMeshes.empty())
-    {
-        XMFLOAT3 mn(1e9, 1e9, 1e9), mx(-1e9, -1e9, -1e9);
-
-        for (auto& sm : m_SubMeshes)
-        {
-            for (auto& p : sm.positions)
-            {
-                mn.x = min(mn.x, p.x);
-                mn.y = min(mn.y, p.y);
-                mn.z = min(mn.z, p.z);
-
-                mx.x = max(mx.x, p.x);
-                mx.y = max(mx.y, p.y);
-                mx.z = max(mx.z, p.z);
-            }
-        }
-
-        XMFLOAT3 c{ (mn.x + mx.x) * 0.5f, (mn.y + mx.y) * 0.5f, (mn.z + mx.z) * 0.5f };
-        XMFLOAT3 e{ (mx.x - mn.x) * 0.5f, (mx.y - mn.y) * 0.5f, (mx.z - mn.z) * 0.5f };
-        m_xmOOBB = BoundingOrientedBox(c, e, XMFLOAT4(0, 0, 0, 1));
-    }
-
-    // -----------------------------------------------------------------------------
-    // 7) 정적 메쉬 (스키닝=)
-    // -----------------------------------------------------------------------------
-    m_bSkinnedMesh = true;
-
-    // -----------------------------------------------------------------------------
-    // 8) SubMesh GPU VB/IB 생성
+    // 10) GPU VB/IB 생성(기존 동일)
     // -----------------------------------------------------------------------------
     for (auto& sm : m_SubMeshes)
     {
@@ -622,29 +571,16 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
         const auto& boneIndices = sm.boneIndices;
         const auto& boneWeights = sm.boneWeights;
 
-        // -------------------------
-        // 8-1) SkinnedVertex 배열로 패킹
-        // -------------------------
+        // 10-1) SkinnedVertex 패킹
         std::vector<SkinnedVertex> vertices(positions.size());
 
         for (size_t i = 0; i < positions.size(); ++i)
         {
             SkinnedVertex v{};
             v.position = positions[i];
+            v.normal = (i < normals.size() ? normals[i] : XMFLOAT3(0, 1, 0));
+            v.uv = (i < uvs.size() ? uvs[i] : XMFLOAT2(0, 0));
 
-            if (i < normals.size())
-                v.normal = normals[i];
-            else
-                v.normal = XMFLOAT3(0.f, 1.f, 0.f);
-
-            if (i < uvs.size())
-                v.uv = uvs[i];
-            else
-                v.uv = XMFLOAT2(0.f, 0.f);
-
-            // bone indices / weights
-            // 아직 FBX에서 스킨 정보를 제대로 안 채웠다면,
-            // 기본값: 첫 번째 본(0)만 1.0, 나머지 0.0
             if (i < boneIndices.size())
             {
                 const XMUINT4& bi = boneIndices[i];
@@ -680,96 +616,84 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
             vertices[i] = v;
         }
 
-        // -------------------------
-        // 8-2) Vertex Buffer 생성
-        // -------------------------
-        UINT vbSize = static_cast<UINT>(vertices.size() * sizeof(SkinnedVertex));
+        // 10-2) VB 생성
+        UINT vbSize = sizeof(SkinnedVertex) * (UINT)vertices.size();
 
         CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
-        CD3DX12_RESOURCE_DESC   resDesc = CD3DX12_RESOURCE_DESC::Buffer(vbSize);
+        CD3DX12_RESOURCE_DESC vbDesc = CD3DX12_RESOURCE_DESC::Buffer(vbSize);
 
-        HRESULT hr = m_pd3dDevice->CreateCommittedResource(
+        HRESULT hr = device->CreateCommittedResource(
             &heapProps,
             D3D12_HEAP_FLAG_NONE,
-            &resDesc,
+            &vbDesc,
             D3D12_RESOURCE_STATE_COPY_DEST,
             nullptr,
-            IID_PPV_ARGS(&sm.vb)
-        );
-        if (FAILED(hr)) OutputDebugString(L"[FBX] Failed to create VB.\n");
+            IID_PPV_ARGS(&sm.vb));
 
-        CD3DX12_HEAP_PROPERTIES uploadHeapProps(D3D12_HEAP_TYPE_UPLOAD);
-        hr = m_pd3dDevice->CreateCommittedResource(
-            &uploadHeapProps,
+        CD3DX12_HEAP_PROPERTIES uploadProps(D3D12_HEAP_TYPE_UPLOAD);
+        hr = device->CreateCommittedResource(
+            &uploadProps,
             D3D12_HEAP_FLAG_NONE,
-            &resDesc,
+            &vbDesc,
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
-            IID_PPV_ARGS(&sm.vbUpload)
-        );
-        if (FAILED(hr)) OutputDebugString(L"[FBX] Failed to create VB upload.\n");
+            IID_PPV_ARGS(&sm.vbUpload));
 
-        // 데이터 복사
-        void* mapped = nullptr;
-        CD3DX12_RANGE readRange(0, 0);
-        sm.vbUpload->Map(0, &readRange, &mapped);
+        void* mapped;
+        CD3DX12_RANGE range(0, 0);
+        sm.vbUpload->Map(0, &range, &mapped);
         memcpy(mapped, vertices.data(), vbSize);
         sm.vbUpload->Unmap(0, nullptr);
 
-        // 업로드 → 디폴트 버퍼
         cmdList->CopyBufferRegion(sm.vb, 0, sm.vbUpload, 0, vbSize);
 
-        CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-            sm.vb,
-            D3D12_RESOURCE_STATE_COPY_DEST,
-            D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER
-        );
-        cmdList->ResourceBarrier(1, &barrier);
+        CD3DX12_RESOURCE_BARRIER vbBarrier =
+            CD3DX12_RESOURCE_BARRIER::Transition(
+                sm.vb,
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+
+        cmdList->ResourceBarrier(1, &vbBarrier);
 
         sm.vbView.BufferLocation = sm.vb->GetGPUVirtualAddress();
         sm.vbView.SizeInBytes = vbSize;
-        sm.vbView.StrideInBytes = sizeof(SkinnedVertex); // 64 bytes
+        sm.vbView.StrideInBytes = sizeof(SkinnedVertex);
 
-        // -------------------------
-        // 8-3) Index Buffer 생성 (기존 그대로)
-        // -------------------------
+        // 10-3) IB 생성
         if (!indices.empty())
         {
-            UINT ibSize = static_cast<UINT>(indices.size() * sizeof(UINT));
+            UINT ibSize = sizeof(uint32_t) * (UINT)indices.size();
 
             CD3DX12_RESOURCE_DESC ibDesc = CD3DX12_RESOURCE_DESC::Buffer(ibSize);
 
-            hr = m_pd3dDevice->CreateCommittedResource(
+            hr = device->CreateCommittedResource(
                 &heapProps,
                 D3D12_HEAP_FLAG_NONE,
                 &ibDesc,
                 D3D12_RESOURCE_STATE_COPY_DEST,
                 nullptr,
-                IID_PPV_ARGS(&sm.ib)
-            );
-            if (FAILED(hr)) OutputDebugString(L"[FBX] Failed to create IB.\n");
+                IID_PPV_ARGS(&sm.ib));
 
-            hr = m_pd3dDevice->CreateCommittedResource(
-                &uploadHeapProps,
+            hr = device->CreateCommittedResource(
+                &uploadProps,
                 D3D12_HEAP_FLAG_NONE,
                 &ibDesc,
                 D3D12_RESOURCE_STATE_GENERIC_READ,
                 nullptr,
-                IID_PPV_ARGS(&sm.ibUpload)
-            );
-            if (FAILED(hr)) OutputDebugString(L"[FBX] Failed to create IB upload.\n");
+                IID_PPV_ARGS(&sm.ibUpload));
 
-            sm.ibUpload->Map(0, &readRange, &mapped);
+            sm.ibUpload->Map(0, &range, &mapped);
             memcpy(mapped, indices.data(), ibSize);
             sm.ibUpload->Unmap(0, nullptr);
 
             cmdList->CopyBufferRegion(sm.ib, 0, sm.ibUpload, 0, ibSize);
 
-            CD3DX12_RESOURCE_BARRIER ibBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-                sm.ib,
-                D3D12_RESOURCE_STATE_COPY_DEST,
-                D3D12_RESOURCE_STATE_INDEX_BUFFER
-            );
+            CD3DX12_RESOURCE_BARRIER ibBarrier =
+                CD3DX12_RESOURCE_BARRIER::Transition(
+                    sm.ib,
+                    D3D12_RESOURCE_STATE_COPY_DEST,
+                    D3D12_RESOURCE_STATE_INDEX_BUFFER);
+
             cmdList->ResourceBarrier(1, &ibBarrier);
 
             sm.ibView.BufferLocation = sm.ib->GetGPUVirtualAddress();
@@ -778,17 +702,19 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd
         }
     }
 
-
-
+    // -----------------------------------------------------------------------------
     // 로그
+    // -----------------------------------------------------------------------------
     std::ostringstream log;
     log << "[FBX] Mesh Loaded: " << filename << "\n"
+        << "   BaseMeshIndex: " << baseMeshIndex << "\n"
         << "   SubMeshes: " << m_SubMeshes.size() << "\n"
         << "   Bones    : " << m_Bones.size() << "\n";
     OutputDebugStringA(log.str().c_str());
 
     mgr->Destroy();
 }
+
 
 void CMesh::EnableSkinning(int nBones)
 {

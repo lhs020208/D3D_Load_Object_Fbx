@@ -309,7 +309,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	// 5) Player ¼³Á¤
 	//=====================================================================
 	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
-	m_pPlayer->SetCameraOffset(XMFLOAT3(-00.0f, 100.0f, 200.0f));
+	m_pPlayer->SetCameraOffset(XMFLOAT3(-00.0f, -100.0f, 200.0f));
 	m_pPlayer->CreateShaderVariables(pd3dDevice, pd3dCommandList);
 	m_pPlayer->SetShader(pShader);
 
