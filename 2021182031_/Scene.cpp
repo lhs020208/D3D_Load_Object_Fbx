@@ -377,7 +377,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	// 7) UnityChan 애니메이션(JUMP00) 로드 & Animator에 등록 + 재생
 	//=====================================================================
-
+	
 	{
 		AnimationClip jumpClip;
 
@@ -416,6 +416,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 			OutputDebugStringA("[TankScene] Failed to load animation: Models/unitychan_JUMP00.fbx\n");
 		}
 	}
+	
 }
 
 

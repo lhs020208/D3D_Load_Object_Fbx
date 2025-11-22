@@ -37,6 +37,12 @@ namespace
     }
 
     // 하나의 본 노드에 대해 BoneKeyframes 를 채운다.
+    // ============================================================================
+    // ExtractBoneTrack (REVISED)
+    //   - FBX 로컬 TRS만 추출
+    //   - bindLocal 관련 보정 삭제
+    //   - corrected = bindInv * anim * bind 구문은 보존만 함(사용 X)
+    // ============================================================================
     void ExtractBoneTrack(
         FbxNode* node,
         int boneIndex,
@@ -48,65 +54,73 @@ namespace
     {
         if (!node || boneIndex < 0) return;
 
+        // --- 키 시간 수집 ---
         std::set<FbxTime> keyTimes;
         CollectKeyTimes(node, layer, keyTimes);
 
         if (keyTimes.empty())
-            return; // 이 본에 대한 키가 없음
+            return;
 
         BoneKeyframes& track = clip.boneTracks[boneIndex];
 
         const double startSec = timeSpan.GetStart().GetSecondDouble();
 
-        // bindLocal은 이제 corrected 계산에 사용하지 않지만,
-        //   원래 로직을 남겨두기 위해 불러오기는 한다.
+        // ------------------------------------------------------------------------
+        // OLD: bindLocal 보정용으로 bind/bindInv를 사용했으나
+        //      NEW 방식에서는 사용하지 않는다.
+        // ------------------------------------------------------------------------
+        /*
         const Bone& bone = bones[boneIndex];
-        XMMATRIX bind = XMLoadFloat4x4(&bone.bindLocal);
+        XMMATRIX bind    = XMLoadFloat4x4(&bone.bindLocal);
         XMMATRIX bindInv = XMMatrixInverse(nullptr, bind);
+        */
 
+        // ------------------------------------------------------------------------
+        // NEW 방식: FBX 로컬 TRS만 사용
+        // ------------------------------------------------------------------------
         for (const FbxTime& t : keyTimes)
         {
             if (t < timeSpan.GetStart() || t > timeSpan.GetStop())
                 continue;
 
-            // =====================================================
-            // NEW: 순수 애니메이션 로컬 행렬(FBX local) 사용
-            // =====================================================
-            FbxAMatrix animLocalFBX = node->EvaluateLocalTransform(t);
+            // ----- FBX 로컬 행렬 -----
+            FbxAMatrix fbxLocal = node->EvaluateLocalTransform(t);
 
-            // animLocalFBX → XMFLOAT4X4 변환
-            XMFLOAT4X4 animF{};
-            for (int r = 0; r < 4; ++r)
-                for (int c = 0; c < 4; ++c)
-                    animF.m[r][c] = (float)animLocalFBX.Get(r, c);
-
-            XMMATRIX anim = XMLoadFloat4x4(&animF);
-
-            // =====================================================
-            // TRS 직접 분해
-            // =====================================================
-            XMVECTOR S, R, T;
-            XMMatrixDecompose(&S, &R, &T, anim);
+            // ----- TRS 분해 -----
+            FbxVector4 T = fbxLocal.GetT();
+            FbxQuaternion R = fbxLocal.GetQ();
+            FbxVector4 S = fbxLocal.GetS();
 
             Keyframe k;
-            double sec = t.GetSecondDouble() - startSec;
-            k.timeSec = (float)(sec * timeScale);
+            k.timeSec = (float)((t.GetSecondDouble() - startSec) * timeScale);
 
-            XMStoreFloat3(&k.translation, T);
-            XMStoreFloat4(&k.rotationQuat, R);
+            k.translation = XMFLOAT3(
+                (float)T[0],
+                (float)T[1],
+                (float)T[2]
+            );
 
-            // scale 저장 (FBX scale도 유지되게)
-            XMFLOAT3 s;
-            XMStoreFloat3(&s, S);
-            k.scale = s;
+            k.rotationQuat = XMFLOAT4(
+                (float)R[0],
+                (float)R[1],
+                (float)R[2],
+                (float)R[3]
+            );
+
+            k.scale = XMFLOAT3(
+                (float)S[0],
+                (float)S[1],
+                (float)S[2]
+            );
 
             track.keyframes.push_back(k);
 
-            // =====================================================
-            // OLD LOGIC (잘못된 부분) ? 지우지 말고 보존
-            //     corrected = bindInv * anim * bind
-            // =====================================================
+            // --------------------------------------------------------------------
+            // OLD LOGIC (사용 X, 보존만 함)
+            // corrected = bindInv * anim * bind
+            // --------------------------------------------------------------------
             /*
+            XMMATRIX anim = XMLoadFloat4x4(&animF);
             XMMATRIX corrected = bindInv * anim * bind;
 
             XMVECTOR S2, R2, T2;
@@ -117,17 +131,17 @@ namespace
             XMStoreFloat3(&k_old.translation, T2);
             XMStoreFloat4(&k_old.rotationQuat, R2);
             k_old.scale = XMFLOAT3(1,1,1);
-
-            // track.keyframes.push_back(k_old);
             */
         }
 
+        // 시간 순 정렬
         std::sort(track.keyframes.begin(), track.keyframes.end(),
             [](const Keyframe& a, const Keyframe& b)
             {
                 return a.timeSec < b.timeSec;
             });
     }
+
 
 
 
@@ -1227,88 +1241,143 @@ bool CMesh::LoadAnimationFromFBX(
         return false;
     }
 
-    // FBX 매니저/씬 생성
-    FbxManager* pManager = FbxManager::Create();
-    FbxIOSettings* ios = FbxIOSettings::Create(pManager, IOSROOT);
-    pManager->SetIOSettings(ios);
+    // ---------------------------------------------------------------------------------------
+    // 1) FBX Manager / Scene
+    // ---------------------------------------------------------------------------------------
+    FbxManager* mgr = FbxManager::Create();
+    FbxIOSettings* ios = FbxIOSettings::Create(mgr, IOSROOT);
+    mgr->SetIOSettings(ios);
 
-    FbxImporter* importer = FbxImporter::Create(pManager, "");
-    if (!importer->Initialize(filename, -1, pManager->GetIOSettings()))
+    FbxImporter* imp = FbxImporter::Create(mgr, "");
+    if (!imp->Initialize(filename, -1, mgr->GetIOSettings()))
     {
-        OutputDebugStringA("[CMesh::LoadAnimationFromFBX] Importer Initialize failed.\n");
-        importer->Destroy();
-        pManager->Destroy();
+        OutputDebugStringA("[LoadAnimation] Importer Initialize failed.\n");
+        imp->Destroy();
+        mgr->Destroy();
         return false;
     }
 
-    FbxScene* pScene = FbxScene::Create(pManager, "AnimScene");
-    importer->Import(pScene);
-    importer->Destroy();
+    FbxScene* scene = FbxScene::Create(mgr, "AnimScene");
+    imp->Import(scene);
+    imp->Destroy();
 
-    // 좌표계/단위는 모델 로딩 때와 동일하게 맞춰준다.
-    FbxAxisSystem::DirectX.ConvertScene(pScene);
-    FbxSystemUnit::m.ConvertScene(pScene);
+    // 동일한 좌표계 적용 (Mesh 로드와 동일)
+    FbxAxisSystem::DirectX.ConvertScene(scene);
+    FbxSystemUnit::m.ConvertScene(scene);
 
-    // AnimStack / AnimLayer 얻기
-    FbxAnimStack* pStack = pScene->GetCurrentAnimationStack();
-    if (!pStack && pScene->GetSrcObjectCount<FbxAnimStack>() > 0)
+    // ---------------------------------------------------------------------------------------
+    // 2) Animation Stack / Layer
+    // ---------------------------------------------------------------------------------------
+    FbxAnimStack* stack = scene->GetCurrentAnimationStack();
+    if (!stack && scene->GetSrcObjectCount<FbxAnimStack>() > 0)
+        stack = scene->GetSrcObject<FbxAnimStack>(0);
+
+    if (!stack)
     {
-        pStack = pScene->GetSrcObject<FbxAnimStack>(0);
-    }
-    if (!pStack)
-    {
-        OutputDebugStringA("[CMesh::LoadAnimationFromFBX] No AnimStack.\n");
-        pScene->Destroy();
-        pManager->Destroy();
+        OutputDebugStringA("[LoadAnimation] No AnimStack.\n");
+        scene->Destroy();
+        mgr->Destroy();
         return false;
     }
 
-    FbxTimeSpan timeSpan = pStack->GetLocalTimeSpan();
+    FbxTimeSpan timeSpan = stack->GetLocalTimeSpan();
+    FbxAnimLayer* layer = stack->GetMember<FbxAnimLayer>(0);
 
-    FbxAnimLayer* pLayer = pStack->GetMember<FbxAnimLayer>(0);
-    if (!pLayer)
+    if (!layer)
     {
-        OutputDebugStringA("[CMesh::LoadAnimationFromFBX] No AnimLayer.\n");
-        pScene->Destroy();
-        pManager->Destroy();
+        OutputDebugStringA("[LoadAnimation] No AnimLayer.\n");
+        scene->Destroy();
+        mgr->Destroy();
         return false;
     }
 
-    // 클립 기본 정보 세팅
-    outClip.name = clipName.empty() ? std::string(pStack->GetName()) : clipName;
+    // ---------------------------------------------------------------------------------------
+    // 3) Clip metadata
+    // ---------------------------------------------------------------------------------------
+    outClip.name = clipName.empty() ? std::string(stack->GetName()) : clipName;
 
     double startSec = timeSpan.GetStart().GetSecondDouble();
     double endSec = timeSpan.GetStop().GetSecondDouble();
-    outClip.duration = static_cast<float>((endSec - startSec) * timeScale);
+    outClip.duration = (float)((endSec - startSec) * timeScale);
 
     outClip.boneTracks.clear();
     outClip.boneNameToTrack.clear();
     outClip.boneTracks.resize(m_Bones.size());
 
-    // 본 이름/인덱스에 맞춰 트랙 기본값 초기화
+    // 트랙 기본 세팅
     for (size_t i = 0; i < m_Bones.size(); ++i)
     {
         BoneKeyframes& track = outClip.boneTracks[i];
-        track.boneIndex = static_cast<int>(i);
+        track.boneIndex = (int)i;
         track.boneName = m_Bones[i].name;
-        outClip.boneNameToTrack[track.boneName] = static_cast<int>(i);
+        outClip.boneNameToTrack[track.boneName] = (int)i;
     }
 
-    // 씬 트리 순회하며, 우리 스켈레톤 이름과 같은 노드에서 키 뽑기
-    FbxNode* pRoot = pScene->GetRootNode();
-    if (pRoot)
-    {
-        TraverseAndExtractTracks(pRoot, pLayer,
-            m_Bones,                // skeleton 넘겨줌
-            m_BoneNameToIndex,
-            timeSpan, timeScale,
-            outClip);
-    }
+    // ---------------------------------------------------------------------------------------
+    // 4) Bone track extraction (새 방식)
+    // ---------------------------------------------------------------------------------------
+    // 기존: corrected = bindInv * anim * bind  삭제
+    // 지금: node->EvaluateLocalTransform(t) 의 TRS만 읽어 로컬값으로 사용 
 
+    // 재귀적으로 노드를 순회하며 본 이름에 맞는 것만 키 추출
+    std::function<void(FbxNode*)> traverse = [&](FbxNode* node)
+        {
+            if (!node) return;
 
-    pScene->Destroy();
-    pManager->Destroy();
+            const char* nodeName = node->GetName();
+            auto it = m_BoneNameToIndex.find(nodeName);
+
+            if (it != m_BoneNameToIndex.end())
+            {
+                int boneIndex = it->second;
+
+                // --- 키프레임 시간 수집 ---
+                std::set<FbxTime> keyTimes;
+                CollectKeyTimes(node, layer, keyTimes);
+
+                BoneKeyframes& track = outClip.boneTracks[boneIndex];
+
+                for (FbxTime t : keyTimes)
+                {
+                    if (t < timeSpan.GetStart() || t > timeSpan.GetStop())
+                        continue;
+
+                    // FBX → Local TRS
+                    FbxAMatrix localM = node->EvaluateLocalTransform(t);
+
+                    // TRS 분해
+                    FbxVector4 T = localM.GetT();
+                    FbxQuaternion R = localM.GetQ();
+                    FbxVector4 S = localM.GetS();
+
+                    Keyframe k;
+                    k.timeSec = (float)((t.GetSecondDouble() - startSec) * timeScale);
+                    k.translation = { (float)T[0], (float)T[1], (float)T[2] };
+                    k.rotationQuat = { (float)R[0], (float)R[1], (float)R[2], (float)R[3] };
+                    k.scale = { (float)S[0], (float)S[1], (float)S[2] };
+
+                    track.keyframes.push_back(k);
+                }
+
+                // 시간순 정렬
+                std::sort(track.keyframes.begin(), track.keyframes.end(),
+                    [](const Keyframe& a, const Keyframe& b)
+                    {
+                        return a.timeSec < b.timeSec;
+                    });
+            }
+
+            for (int i = 0; i < node->GetChildCount(); ++i)
+                traverse(node->GetChild(i));
+        };
+
+    traverse(scene->GetRootNode());
+
+    // ---------------------------------------------------------------------------------------
+    // 5) cleanup
+    // ---------------------------------------------------------------------------------------
+    scene->Destroy();
+    mgr->Destroy();
 
     return true;
 }
-

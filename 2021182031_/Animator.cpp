@@ -94,9 +94,9 @@ void CAnimator::Update(float dt)
 {
     if (!m_bPlaying || !m_pCurrentClip)
         return;
-    return;
+	
     // 시간 증가
-    m_fCurrentTime += dt;
+    //m_fCurrentTime += dt;
     //m_fCurrentTime += 0.001f;
 
 
