@@ -595,8 +595,18 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
 
                 FbxVector4 pos = cp[cpIdx];
 
-                // ★ 모든 mesh를 baseMesh bind pose 기준 local로 정렬
-                pos = invBaseBind.MultT(pos);
+                //pos = invBaseBind.MultT(pos);
+                if (meshHasSkin[mi])
+                {
+                    // skinned mesh → 변환 없음
+                }
+                else
+                {
+                    // non-skinned mesh
+                    FbxAMatrix corr =
+                        boneGlobalBind[attachedBoneIndex].Inverse() * baseMeshGlobalBind;
+                    pos = corr.MultT(pos);
+                }
 
                 sm.positions.push_back(ToXM3(pos));
 

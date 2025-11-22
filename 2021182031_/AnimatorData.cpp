@@ -161,28 +161,6 @@ void AnimationClip::Evaluate(
 
         outLocalTransforms[i] = localM;
 
-        // ====================================================
-        //  기존 잘못된 로직 (bind 보정/corrected 사용) ? 보존용으로 주석 
-        /*
-        // track.keyframes 안에는 "corrected" 공간의 TRS가 들어있다.
-        SampleBoneTrack(track.keyframes, timeSec, t, r, s);
-
-        // corrected 로컬 행렬
-        XMFLOAT4X4 correctedLocal;
-        BuildTRSMatrix(t, r, s, correctedLocal);
-
-        // bind / bindInv
-        XMMATRIX bindM    = XMLoadFloat4x4(&skeleton[i].bindLocal);
-        XMMATRIX bindInvM = XMMatrixInverse(nullptr, bindM);
-        XMMATRIX corrM    = XMLoadFloat4x4(&correctedLocal);
-
-        // animLocal = bind * corrected * bindInv
-        XMMATRIX animM = bindM * corrM * bindInvM;
-
-        XMStoreFloat4x4(&outLocalTransforms[i], animM);
-        */
-        //  기존 잘못된 로직 끝 
-        // ====================================================
     }
 }
 
