@@ -45,17 +45,23 @@ struct BoneKeyframes
 */
 struct Bone
 {
-    std::string name;        // 본 이름
-    int         parentIndex; // 부모 본 인덱스
+    std::string name;
+    int         parentIndex;
 
-    // 바인드포즈 기준 "로컬" 행렬 (본 로컬 공간)
-    //   - node->EvaluateLocalTransform(0) 결과를 저장해 둘 예정
     XMFLOAT4X4  bindLocal;
-
-    // inverse bind pose (모델 공간 -> 본 공간)
-    //   - FBX Skin(Cluster)에서 계산해서 채울 것
     XMFLOAT4X4  offsetMatrix;
+
+    // ================================
+    // A 방식(rest-pose alignment) 확장
+    // ================================
+
+    // 애니메이션 FBX의 바인드포즈(local)
+    XMFLOAT4X4  animRestLocal;
+
+    // Δ(local) = bindLocal * inverse(animRestLocal)
+    XMFLOAT4X4  deltaLocal;
 };
+
 
 struct AnimationClip
 {
