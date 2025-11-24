@@ -506,8 +506,8 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
     }
 
     // -------------------------------------------------------------------------
-    // 9) SubMesh 생성 (기존 로직 그대로)
-    // -------------------------------------------------------------------------
+// 9) SubMesh 생성 (UV 복원 추가됨)
+// -------------------------------------------------------------------------
     m_SubMeshes.clear();
 
     auto ToXM3 = [&](const FbxVector4& v) { return XMFLOAT3((float)v[0], (float)v[1], (float)v[2]); };
@@ -560,6 +560,14 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
         int cpCount = mesh->GetControlPointsCount();
         FbxVector4* cp = mesh->GetControlPoints();
 
+        // --- UV 세트 이름 얻기 (첫 번째 세트 사용) ---
+        FbxStringList uvSetNames;
+        mesh->GetUVSetNames(uvSetNames);
+        const char* uvSetName = nullptr;
+        if (uvSetNames.GetCount() > 0)
+            uvSetName = uvSetNames[0];
+        const bool hasUVSet = (uvSetName != nullptr);
+
         for (int p = 0; p < polyCount; ++p)
         {
             int idx[3] = { 0,1,2 };
@@ -571,21 +579,39 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
                 if (cpIdx < 0 || cpIdx >= cpCount) continue;
 
                 FbxVector4 pos = cp[cpIdx];
-
                 sm.positions.push_back(ToXM3(pos));
 
                 FbxVector4 n;
                 mesh->GetPolygonVertexNormal(p, idx[k], n);
                 sm.normals.push_back(ToXM3(n));
 
-                sm.uvs.push_back(XMFLOAT2(0, 0)); // TODO: 필요 시 UV 복원
+                // -----------------------------
+                // UV 복원
+                // -----------------------------
+                if (hasUVSet)
+                {
+                    FbxVector2 uv;
+                    bool unmapped = false;
+                    if (mesh->GetPolygonVertexUV(p, idx[k], uvSetName, uv, unmapped))
+                    {
+                        sm.uvs.push_back(ToXM2(uv));
+                    }
+                    else
+                    {
+                        sm.uvs.push_back(XMFLOAT2(0, 0));
+                    }
+                }
+                else
+                {
+                    sm.uvs.push_back(XMFLOAT2(0, 0));
+                }
 
                 sm.indices.push_back((UINT)sm.indices.size());
 
                 // non-skinned mesh → attachedBoneIndex에 weight=1
                 if (!meshHasSkin[mi])
                 {
-                    XMUINT4 bi(0, 0, 0, 0);
+                    XMUINT4  bi(0, 0, 0, 0);
                     XMFLOAT4 bw(0, 0, 0, 0);
 
                     if (attachedBoneIndex >= 0)
@@ -624,6 +650,7 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
 
         m_SubMeshes.push_back(sm);
     }
+
 
     // -------------------------------------------------------------------------
     // 10) GPU VB/IB 생성 (기존 동일)
