@@ -1389,7 +1389,7 @@ bool CMesh::LoadAnimationFromFBX(
     // 4) 애니메이션 rest pose(local) 추출 + deltaLocal 계산
     // ============================================================
     {
-        FbxTime restTime = timeSpan.GetStart();   // 0프레임이 아니라 "클립 시작 시각"
+        FbxTime restTime = timeSpan.GetStart();   // 클립 시작 프레임
 
         for (size_t i = 0; i < m_Bones.size(); ++i)
         {
@@ -1401,29 +1401,29 @@ bool CMesh::LoadAnimationFromFBX(
                 continue;
             }
 
-            // 애니 rest pose
+            // 애니 rest pose (local)
             FbxAMatrix restLocalM = boneNode->EvaluateLocalTransform(restTime);
-            FbxVector4 T = restLocalM.GetT();
-            FbxQuaternion R = restLocalM.GetQ();
-            FbxVector4 S = restLocalM.GetS();
+            FbxVector4 RT = restLocalM.GetT();
+            FbxQuaternion RR = restLocalM.GetQ();
+            FbxVector4 RS = restLocalM.GetS();
 
             XMMATRIX animRest =
-                XMMatrixScaling((float)S[0], (float)S[1], (float)S[2]) *
-                XMMatrixRotationQuaternion(XMVectorSet((float)R[0], (float)R[1], (float)R[2], (float)R[3])) *
-                XMMatrixTranslation((float)T[0], (float)T[1], (float)T[2]);
+                XMMatrixScaling((float)RS[0], (float)RS[1], (float)RS[2]) *
+                XMMatrixRotationQuaternion(XMVectorSet((float)RR[0], (float)RR[1], (float)RR[2], (float)RR[3])) *
+                XMMatrixTranslation((float)RT[0], (float)RT[1], (float)RT[2]);
 
             XMStoreFloat4x4(&m_Bones[i].animRestLocal, animRest);
 
-            // deltaLocal = inverse(animRestLocal) * bindLocal
+            // *** 핵심: deltaLocal = bindLocal * inverse(animRestLocal) (전치 X) ***
             XMMATRIX bindLocal = XMLoadFloat4x4(&m_Bones[i].bindLocal);
-            XMMATRIX delta = XMMatrixInverse(nullptr, animRest) * bindLocal;
+            XMMATRIX delta = bindLocal * XMMatrixInverse(nullptr, animRest);
 
             XMStoreFloat4x4(&m_Bones[i].deltaLocal, delta);
         }
     }
 
     // ============================================================
-    // 5) 키프레임 추출 (rawLocal * deltaLocal 보정 적용)
+    // 5) 키프레임 추출 (deltaLocal * rawLocal 보정 적용)
     // ============================================================
     std::function<void(FbxNode*)> traverse = [&](FbxNode* node)
         {
@@ -1445,7 +1445,7 @@ bool CMesh::LoadAnimationFromFBX(
                     if (t < timeSpan.GetStart() || t > timeSpan.GetStop())
                         continue;
 
-                    // raw local
+                    // raw local (애니가 가진 원래 로컬 변환)
                     FbxAMatrix rawM = node->EvaluateLocalTransform(t);
                     FbxVector4 T = rawM.GetT();
                     FbxQuaternion R = rawM.GetQ();
@@ -1456,16 +1456,18 @@ bool CMesh::LoadAnimationFromFBX(
                         XMMatrixRotationQuaternion(XMVectorSet((float)R[0], (float)R[1], (float)R[2], (float)R[3])) *
                         XMMatrixTranslation((float)T[0], (float)T[1], (float)T[2]);
 
-                    // ===== 핵심: rest pose → model bind pose 정렬 =====
-                    XMMATRIX corrected = rawLocal * delta;
+                    // ===== 핵심: rest pose → 모델 bind pose 정렬 =====
+                    // M_corr(t) = bindLocal * (animRest^-1 * M_raw(t))
+                    //           = (bindLocal * animRest^-1) * M_raw(t)
+                    //           = deltaLocal * rawLocal
+                    XMMATRIX corrected = delta * rawLocal;
 
                     // corrected → TRS 분해
                     XMVECTOR outS, outR, outT;
                     XMMatrixDecompose(&outS, &outR, &outT, corrected);
 
                     Keyframe k;
-                    k.timeSec =
-                        (float)((t.GetSecondDouble() - startSec) * timeScale);
+                    k.timeSec = (float)((t.GetSecondDouble() - startSec) * timeScale);
 
                     XMStoreFloat3(&k.translation, outT);
                     XMStoreFloat4(&k.rotationQuat, outR);
@@ -1496,4 +1498,3 @@ bool CMesh::LoadAnimationFromFBX(
 
     return true;
 }
-
