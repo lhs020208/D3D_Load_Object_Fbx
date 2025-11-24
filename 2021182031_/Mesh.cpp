@@ -1385,6 +1385,15 @@ bool CMesh::LoadAnimationFromFBX(
         outClip.boneNameToTrack[track.boneName] = (int)i;
     }
 
+    // 스케일 제거용 헬퍼
+    auto RemoveScale = [](XMMATRIX m)
+        {
+            XMVECTOR s, r, t;
+            XMMatrixDecompose(&s, &r, &t, m);
+            // 스케일을 1,1,1로 만들고 회전+이동만 남긴다.
+            return XMMatrixRotationQuaternion(r) * XMMatrixTranslationFromVector(t);
+        };
+
     // ============================================================
     // 4) 애니메이션 rest pose(local) 추출 + deltaLocal 계산
     // ============================================================
@@ -1412,11 +1421,16 @@ bool CMesh::LoadAnimationFromFBX(
                 XMMatrixRotationQuaternion(XMVectorSet((float)RR[0], (float)RR[1], (float)RR[2], (float)RR[3])) *
                 XMMatrixTranslation((float)RT[0], (float)RT[1], (float)RT[2]);
 
-            XMStoreFloat4x4(&m_Bones[i].animRestLocal, animRest);
+            // ▼ 스케일 제거 버전으로 animRestLocal 저장
+            XMMATRIX animRestNoScale = RemoveScale(animRest);
+            XMStoreFloat4x4(&m_Bones[i].animRestLocal, animRestNoScale);
 
-            // *** 핵심: deltaLocal = bindLocal * inverse(animRestLocal) (전치 X) ***
+            // *** 핵심: deltaLocal = (bindLocal_noScale) * inverse(animRest_noScale) ***
             XMMATRIX bindLocal = XMLoadFloat4x4(&m_Bones[i].bindLocal);
-            XMMATRIX delta = bindLocal * XMMatrixInverse(nullptr, animRest);
+            XMMATRIX bindNoScale = RemoveScale(bindLocal);
+
+            XMMATRIX delta =
+                bindNoScale * XMMatrixInverse(nullptr, animRestNoScale);
 
             XMStoreFloat4x4(&m_Bones[i].deltaLocal, delta);
         }
@@ -1456,10 +1470,8 @@ bool CMesh::LoadAnimationFromFBX(
                         XMMatrixRotationQuaternion(XMVectorSet((float)R[0], (float)R[1], (float)R[2], (float)R[3])) *
                         XMMatrixTranslation((float)T[0], (float)T[1], (float)T[2]);
 
-                    // ===== 핵심: rest pose → 모델 bind pose 정렬 =====
-                    // M_corr(t) = bindLocal * (animRest^-1 * M_raw(t))
-                    //           = (bindLocal * animRest^-1) * M_raw(t)
-                    //           = deltaLocal * rawLocal
+                    // ===== rest pose → 모델 bind pose 정렬 =====
+                    // (deltaLocal은 이미 scale 없는 기준 좌표 변환만 포함)
                     XMMATRIX corrected = delta * rawLocal;
 
                     // corrected → TRS 분해
