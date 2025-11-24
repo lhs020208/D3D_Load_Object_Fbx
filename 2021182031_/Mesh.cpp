@@ -387,6 +387,8 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
                 b.parentIndex = parentIdx;
                 XMStoreFloat4x4(&b.bindLocal, XMMatrixIdentity());
                 XMStoreFloat4x4(&b.offsetMatrix, XMMatrixIdentity());
+                XMStoreFloat4x4(&b.animRestLocal, XMMatrixIdentity());
+                XMStoreFloat4x4(&b.deltaLocal, XMMatrixIdentity());
 
                 myIdx = (int)m_Bones.size();
                 m_BoneNameToIndex[b.name] = myIdx;
@@ -424,61 +426,38 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
     FbxMesh* baseMesh = meshes[baseMeshIndex];
     FbxNode* baseNode = baseMesh->GetNode();
 
-    // base mesh global bind pose (현재는 offset 계산에 사용하지 않지만 남겨둠)
-    FbxAMatrix baseMeshGlobalBind;
-    bool       baseBindValid = false;
-
     // -------------------------------------------------------------------------
-    // 6) cluster 기반 bone global bind pose 수집
+    // 6) boneGlobalBind: "메시 로컬 공간" 기준 본의 바인드 포즈 계산
+    //      - cluster 행렬은 쓰지 않고, 노드의 글로벌 행렬만 사용
+    //      - boneGlobalBind[i] = (baseMeshGlobal^-1) * boneGlobal
     // -------------------------------------------------------------------------
     std::vector<FbxAMatrix> boneGlobalBind(boneCount);
     std::vector<bool>       boneHasBind(boneCount, false);
 
-    for (int m = 0; m < (int)meshes.size(); ++m)
+    FbxAMatrix baseMeshGlobal;
+    if (baseNode)
+        baseMeshGlobal = baseNode->EvaluateGlobalTransform();
+    else
+        baseMeshGlobal.SetIdentity();
+
+    FbxAMatrix baseMeshGlobalInv = baseMeshGlobal.Inverse();
+
+    for (int i = 0; i < boneCount; ++i)
     {
-        FbxMesh* mesh = meshes[m];
-        if (!mesh) continue;
-
-        int skinCount = mesh->GetDeformerCount(FbxDeformer::eSkin);
-        for (int s = 0; s < skinCount; ++s)
+        FbxNode* boneNode = scene->FindNodeByName(m_Bones[i].name.c_str());
+        if (!boneNode)
         {
-            FbxSkin* skin = (FbxSkin*)mesh->GetDeformer(s, FbxDeformer::eSkin);
-            if (!skin) continue;
-
-            int clusterCount = skin->GetClusterCount();
-            for (int c = 0; c < clusterCount; ++c)
-            {
-                FbxCluster* cluster = skin->GetCluster(c);
-                if (!cluster) continue;
-
-                FbxNode* link = cluster->GetLink();
-                if (!link) continue;
-
-                auto it = m_BoneNameToIndex.find(link->GetName());
-                if (it == m_BoneNameToIndex.end()) continue;
-
-                int b = it->second;
-
-                // bone global bind pose
-                FbxAMatrix bind;
-                cluster->GetTransformLinkMatrix(bind);
-                bind.SetS(FbxVector4(1, 1, 1));
-                boneGlobalBind[b] = bind;
-                boneHasBind[b] = true;
-
-                // base mesh bind pose
-                if (!baseBindValid)
-                {
-                    cluster->GetTransformMatrix(baseMeshGlobalBind);
-                    baseMeshGlobalBind.SetS(FbxVector4(1, 1, 1));
-                    baseBindValid = true;
-                }
-            }
+            boneGlobalBind[i].SetIdentity();
+            continue;
         }
-    }
 
-    if (!baseBindValid)
-        baseMeshGlobalBind.SetIdentity();
+        // 본의 글로벌(씬 기준) → 메시 로컬 기준으로 변환
+        FbxAMatrix boneGlobal = boneNode->EvaluateGlobalTransform();
+        FbxAMatrix boneInMesh = baseMeshGlobalInv * boneGlobal; // ← 메시 로컬 기준
+
+        boneGlobalBind[i] = boneInMesh;
+        boneHasBind[i] = true;
+    }
 
     // -------------------------------------------------------------------------
     // 7) bindLocal 계산 (부모 기준 로컬 bind pose)
@@ -487,7 +466,6 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
     {
         if (!boneHasBind[i])
         {
-            // non-skinned bone (드물지만 안전을 위해)
             FbxAMatrix I; I.SetIdentity();
             boneGlobalBind[i] = I;
             boneHasBind[i] = true;
@@ -513,7 +491,7 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
 
     // -------------------------------------------------------------------------
     // 8) offsetMatrix = inverse(boneGlobalBind)
-    //     - 정석: 모델 공간 → 본 공간
+    //     - 모델(메시 로컬) 공간 → 본 공간
     // -------------------------------------------------------------------------
     for (int i = 0; i < boneCount; ++i)
     {
@@ -528,7 +506,7 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
     }
 
     // -------------------------------------------------------------------------
-    // 9) SubMesh 생성
+    // 9) SubMesh 생성 (기존 로직 그대로)
     // -------------------------------------------------------------------------
     m_SubMeshes.clear();
 
@@ -594,8 +572,6 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
 
                 FbxVector4 pos = cp[cpIdx];
 
-                // *** 중요: 스킨/비스킨 모두 여기서는 base bind 보정을 하지 않고
-                // Scene 전체 좌표계 변환만 사용한다. ***
                 sm.positions.push_back(ToXM3(pos));
 
                 FbxVector4 n;
@@ -624,14 +600,12 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
             }
         }
 
-        // 스킨 있는 메시는 기존처럼 FBX 스킨 가중치 사용
         if (meshHasSkin[mi])
         {
             FillSkinWeights(mesh, sm);
         }
         else
         {
-            // non-skinned mesh인데 혹시라도 boneIndices/weights 개수가 안 맞으면 방어
             if (sm.boneIndices.size() != sm.positions.size())
             {
                 sm.boneIndices.resize(sm.positions.size(), XMUINT4(0, 0, 0, 0));
@@ -798,7 +772,6 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
 
     mgr->Destroy();
 }
-
 
 
 

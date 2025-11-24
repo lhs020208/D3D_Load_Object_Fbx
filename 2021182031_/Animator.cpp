@@ -96,8 +96,8 @@ void CAnimator::Update(float dt)
         return;
 	
     // 시간 증가
-    //m_fCurrentTime += dt;
-    m_fCurrentTime += 0.001f;
+    m_fCurrentTime += dt;
+    //m_fCurrentTime += 0.001f;
 
 
     if (m_fCurrentTime > m_pCurrentClip->duration)
