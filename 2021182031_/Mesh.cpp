@@ -1385,25 +1385,56 @@ bool CMesh::LoadAnimationFromFBX(
         outClip.boneNameToTrack[track.boneName] = (int)i;
     }
 
-    // ---------------------------------------------------------------------------------------
-    // 4) Bone track extraction (새 방식)
-    // ---------------------------------------------------------------------------------------
-    // 기존: corrected = bindInv * anim * bind  삭제
-    // 지금: node->EvaluateLocalTransform(t) 의 TRS만 읽어 로컬값으로 사용 
+    // ============================================================
+    // 4) 애니메이션 rest pose(local) 추출 + deltaLocal 계산
+    // ============================================================
+    {
+        FbxTime restTime = timeSpan.GetStart();   // 0프레임이 아니라 "클립 시작 시각"
 
-    // 재귀적으로 노드를 순회하며 본 이름에 맞는 것만 키 추출
+        for (size_t i = 0; i < m_Bones.size(); ++i)
+        {
+            FbxNode* boneNode = scene->FindNodeByName(m_Bones[i].name.c_str());
+            if (!boneNode)
+            {
+                XMStoreFloat4x4(&m_Bones[i].animRestLocal, XMMatrixIdentity());
+                XMStoreFloat4x4(&m_Bones[i].deltaLocal, XMMatrixIdentity());
+                continue;
+            }
+
+            // 애니 rest pose
+            FbxAMatrix restLocalM = boneNode->EvaluateLocalTransform(restTime);
+            FbxVector4 T = restLocalM.GetT();
+            FbxQuaternion R = restLocalM.GetQ();
+            FbxVector4 S = restLocalM.GetS();
+
+            XMMATRIX animRest =
+                XMMatrixScaling((float)S[0], (float)S[1], (float)S[2]) *
+                XMMatrixRotationQuaternion(XMVectorSet((float)R[0], (float)R[1], (float)R[2], (float)R[3])) *
+                XMMatrixTranslation((float)T[0], (float)T[1], (float)T[2]);
+
+            XMStoreFloat4x4(&m_Bones[i].animRestLocal, animRest);
+
+            // deltaLocal = inverse(animRestLocal) * bindLocal
+            XMMATRIX bindLocal = XMLoadFloat4x4(&m_Bones[i].bindLocal);
+            XMMATRIX delta = XMMatrixInverse(nullptr, animRest) * bindLocal;
+
+            XMStoreFloat4x4(&m_Bones[i].deltaLocal, delta);
+        }
+    }
+
+    // ============================================================
+    // 5) 키프레임 추출 (rawLocal * deltaLocal 보정 적용)
+    // ============================================================
     std::function<void(FbxNode*)> traverse = [&](FbxNode* node)
         {
             if (!node) return;
 
-            const char* nodeName = node->GetName();
-            auto it = m_BoneNameToIndex.find(nodeName);
-
+            auto it = m_BoneNameToIndex.find(node->GetName());
             if (it != m_BoneNameToIndex.end())
             {
                 int boneIndex = it->second;
+                XMMATRIX delta = XMLoadFloat4x4(&m_Bones[boneIndex].deltaLocal);
 
-                // --- 키프레임 시간 수집 ---
                 std::set<FbxTime> keyTimes;
                 CollectKeyTimes(node, layer, keyTimes);
 
@@ -1414,24 +1445,36 @@ bool CMesh::LoadAnimationFromFBX(
                     if (t < timeSpan.GetStart() || t > timeSpan.GetStop())
                         continue;
 
-                    // FBX → Local TRS
-                    FbxAMatrix localM = node->EvaluateLocalTransform(t);
+                    // raw local
+                    FbxAMatrix rawM = node->EvaluateLocalTransform(t);
+                    FbxVector4 T = rawM.GetT();
+                    FbxQuaternion R = rawM.GetQ();
+                    FbxVector4 S = rawM.GetS();
 
-                    // TRS 분해
-                    FbxVector4 T = localM.GetT();
-                    FbxQuaternion R = localM.GetQ();
-                    FbxVector4 S = localM.GetS();
+                    XMMATRIX rawLocal =
+                        XMMatrixScaling((float)S[0], (float)S[1], (float)S[2]) *
+                        XMMatrixRotationQuaternion(XMVectorSet((float)R[0], (float)R[1], (float)R[2], (float)R[3])) *
+                        XMMatrixTranslation((float)T[0], (float)T[1], (float)T[2]);
+
+                    // ===== 핵심: rest pose → model bind pose 정렬 =====
+                    XMMATRIX corrected = rawLocal * delta;
+
+                    // corrected → TRS 분해
+                    XMVECTOR outS, outR, outT;
+                    XMMatrixDecompose(&outS, &outR, &outT, corrected);
 
                     Keyframe k;
-                    k.timeSec = (float)((t.GetSecondDouble() - startSec) * timeScale);
-                    k.translation = { (float)T[0], (float)T[1], (float)T[2] };
-                    k.rotationQuat = { (float)R[0], (float)R[1], (float)R[2], (float)R[3] };
-                    k.scale = { (float)S[0], (float)S[1], (float)S[2] };
+                    k.timeSec =
+                        (float)((t.GetSecondDouble() - startSec) * timeScale);
+
+                    XMStoreFloat3(&k.translation, outT);
+                    XMStoreFloat4(&k.rotationQuat, outR);
+                    XMStoreFloat3(&k.scale, outS);
 
                     track.keyframes.push_back(k);
                 }
 
-                // 시간순 정렬
+                // 키프레임 정렬
                 std::sort(track.keyframes.begin(), track.keyframes.end(),
                     [](const Keyframe& a, const Keyframe& b)
                     {
@@ -1439,17 +1482,18 @@ bool CMesh::LoadAnimationFromFBX(
                     });
             }
 
-            for (int i = 0; i < node->GetChildCount(); ++i)
-                traverse(node->GetChild(i));
+            for (int c = 0; c < node->GetChildCount(); ++c)
+                traverse(node->GetChild(c));
         };
 
     traverse(scene->GetRootNode());
 
     // ---------------------------------------------------------------------------------------
-    // 5) cleanup
+    // 6) cleanup
     // ---------------------------------------------------------------------------------------
     scene->Destroy();
     mgr->Destroy();
 
     return true;
 }
+
