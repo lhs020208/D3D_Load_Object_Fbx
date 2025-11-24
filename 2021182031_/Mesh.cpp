@@ -523,6 +523,19 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
         // 이름
         FbxNode* node = mesh->GetNode();
         sm.meshName = node ? node->GetName() : "Unnamed";
+        // ----------------------------------------------------------
+        // Material Name Restore (필수! 현재 코드에서 사라진 상태임)
+        // ----------------------------------------------------------
+        sm.materialName = "";
+        int matCount = node->GetMaterialCount();
+        if (matCount > 0)
+        {
+            FbxSurfaceMaterial* mat = node->GetMaterial(0);
+            if (mat)
+            {
+                sm.materialName = mat->GetName();
+            }
+        }
 
         // triangle winding flip 감지
         FbxAMatrix global = node ? node->EvaluateGlobalTransform() : FbxAMatrix();
