@@ -380,12 +380,6 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	
 	{
 		AnimationClip jumpClip;
-
-		// 시그니처:
-		// bool CMesh::LoadAnimationFromFBX(const char* filename,
-		//                                  const std::string& clipName,
-		//                                  AnimationClip& outClip,
-		//                                  float timeScale);
 		bool animLoaded = mesh->LoadAnimationFromFBX(
 			"Models/unitychan_JUMP00.fbx", // 애니 FBX 경로
 			"Jump",                        // 클립 이름
@@ -393,27 +387,28 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 			1.0f                           // timeScale (필요하면 조정)
 		);
 
+		AnimationClip idleClip;
+		bool idleLoaded = mesh->LoadAnimationFromFBX(
+			"Models/unitychan_WAIT00.fbx",
+			"Idle",
+			idleClip,
+			1.0f
+		);
+
 
 		if (animLoaded)
 		{
-			// 혹시 로더에서 name 안 채우면 안전하게 한 번 더
 			jumpClip.name = "Jump";
+			idleClip.name = "Idle";
 
 			CAnimator* pAnimator = mesh->EnsureAnimator();
 			if (pAnimator)
 			{
 				pAnimator->AddClip(jumpClip);
+				pAnimator->AddClip(idleClip);
 
-				// 바로 이 자리에서 재생시킬 거면:
-				pAnimator->Play("Jump", true, 0.0f);
-
-				// 만약 Player::SetDefaultAnimation("Jump", ...) 를 써서
-				// 자동 Play 하게 할 거면 여기 Play는 빼도 됨.
+				pAnimator->Play("Idle", true, 0.0f);
 			}
-		}
-		else
-		{
-			OutputDebugStringA("[TankScene] Failed to load animation: Models/unitychan_JUMP00.fbx\n");
 		}
 	}
 	

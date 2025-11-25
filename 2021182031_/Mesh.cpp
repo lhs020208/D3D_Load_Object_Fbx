@@ -1450,8 +1450,9 @@ bool CMesh::LoadAnimationFromFBX(
     }
 
     // ============================================================
-    // 5) 키프레임 추출 (deltaLocal * rawLocal 보정 적용)
-    // ============================================================
+// 5) 키프레임 추출 (deltaLocal * rawLocal 보정 적용)
+//      + 0프레임 제거(첫 유효 프레임을 0초로 재정렬)
+// ============================================================
     std::function<void(FbxNode*)> traverse = [&](FbxNode* node)
         {
             if (!node) return;
@@ -1484,7 +1485,6 @@ bool CMesh::LoadAnimationFromFBX(
                         XMMatrixTranslation((float)T[0], (float)T[1], (float)T[2]);
 
                     // ===== rest pose → 모델 bind pose 정렬 =====
-                    // (deltaLocal은 이미 scale 없는 기준 좌표 변환만 포함)
                     XMMATRIX corrected = delta * rawLocal;
 
                     // corrected → TRS 분해
@@ -1501,7 +1501,7 @@ bool CMesh::LoadAnimationFromFBX(
                     track.keyframes.push_back(k);
                 }
 
-                // 키프레임 정렬
+                // 시간순 정렬
                 std::sort(track.keyframes.begin(), track.keyframes.end(),
                     [](const Keyframe& a, const Keyframe& b)
                     {
@@ -1514,6 +1514,37 @@ bool CMesh::LoadAnimationFromFBX(
         };
 
     traverse(scene->GetRootNode());
+
+    // ============================================================
+    // ★ (추가) 0프레임(T포즈) 제거: 전체 트랙에서 가장 작은 timeSec > 0 찾기
+    // ============================================================
+    float minTime = FLT_MAX;
+
+    for (auto& track : outClip.boneTracks)
+    {
+        for (auto& k : track.keyframes)
+        {
+            if (k.timeSec > 0.0f && k.timeSec < minTime)
+            {
+                minTime = k.timeSec;
+            }
+        }
+    }
+
+
+    // minTime이 유효할 경우 → 모든 key.timeSec -= minTime
+    if (minTime != FLT_MAX)
+    {
+        for (auto& track : outClip.boneTracks)
+        {
+            for (auto& k : track.keyframes)
+                k.timeSec -= minTime;
+        }
+
+        // duration도 갱신
+        outClip.duration -= minTime;
+    }
+
 
     // ---------------------------------------------------------------------------------------
     // 6) cleanup

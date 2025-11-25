@@ -63,8 +63,50 @@ bool CAnimator::Play(const std::string& clipName, bool loop, float startTime)
     m_bLoop = loop;
     m_bPlaying = true;
 
+    // =====================================================
+    // ★ 첫 프레임 포즈 즉시 적용 (T-포즈 → 첫 키프레임 보간 제거)
+    // =====================================================
+    if (m_pCurrentClip)
+    {
+        // 1) Local pose 계산
+        m_pCurrentClip->Evaluate(
+            m_fCurrentTime,
+            m_Skeleton,
+            m_LocalPose
+        );
+
+        // 2) Global pose 계산
+        const int boneCount = (int)m_Skeleton.size();
+        for (int i = 0; i < boneCount; ++i)
+        {
+            int parent = m_Skeleton[i].parentIndex;
+            XMMATRIX local = XMLoadFloat4x4(&m_LocalPose[i]);
+
+            if (parent < 0)
+            {
+                XMStoreFloat4x4(&m_GlobalPose[i], local);
+            }
+            else
+            {
+                XMMATRIX parentM = XMLoadFloat4x4(&m_GlobalPose[parent]);
+                XMMATRIX global = local * parentM;
+                XMStoreFloat4x4(&m_GlobalPose[i], global);
+            }
+        }
+
+        // 3) Final bone matrices
+        for (int i = 0; i < boneCount; ++i)
+        {
+            XMMATRIX global = XMLoadFloat4x4(&m_GlobalPose[i]);
+            XMMATRIX offset = XMLoadFloat4x4(&m_Skeleton[i].offsetMatrix);
+            XMMATRIX skin = offset * global;
+            XMStoreFloat4x4(&m_FinalBoneMatrices[i], skin);
+        }
+    }
+
     return true;
 }
+
 
 // ============================================================
 // Stop
