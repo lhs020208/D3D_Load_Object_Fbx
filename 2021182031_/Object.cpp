@@ -320,3 +320,16 @@ void CGameObject::SetRotationTransform(XMFLOAT4X4* pmxf4x4Transform)
 	m_xmf4x4World._21 = pmxf4x4Transform->_21; m_xmf4x4World._22 = pmxf4x4Transform->_22; m_xmf4x4World._23 = pmxf4x4Transform->_23;
 	m_xmf4x4World._31 = pmxf4x4Transform->_31; m_xmf4x4World._32 = pmxf4x4Transform->_32; m_xmf4x4World._33 = pmxf4x4Transform->_33;
 }
+
+void CGameObject::PlayAnimation(const std::string& clipName, bool loop, float start)
+{
+	if (!m_ppMeshes) return;
+	for (int i = 0; i < m_nMeshes; ++i)
+	{
+		CAnimator* anim = m_ppMeshes[i]->GetAnimator();
+		if (!anim) return;
+
+		anim->Play(clipName, loop, start);
+	}
+}
+

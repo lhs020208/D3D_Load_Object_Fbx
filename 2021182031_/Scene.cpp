@@ -381,18 +381,12 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	{
 		AnimationClip jumpClip;
 		bool animLoaded = mesh->LoadAnimationFromFBX(
-			"Models/unitychan_JUMP00.fbx", // 애니 FBX 경로
-			"Jump",                        // 클립 이름
-			jumpClip,                      // 결과 클립
-			1.0f                           // timeScale (필요하면 조정)
+			"Models/unitychan_JUMP00.fbx", "Jump",jumpClip, 1.0f
 		);
 
 		AnimationClip idleClip;
 		bool idleLoaded = mesh->LoadAnimationFromFBX(
-			"Models/unitychan_WAIT00.fbx",
-			"Idle",
-			idleClip,
-			1.0f
+			"Models/unitychan_WAIT00.fbx","Idle",idleClip,1.0f
 		);
 
 
@@ -407,7 +401,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 				pAnimator->AddClip(jumpClip);
 				pAnimator->AddClip(idleClip);
 
-				pAnimator->Play("Idle", true, 0.0f);
+				pAnimator->Play("Jump", true, 0.0f);
 			}
 		}
 	}

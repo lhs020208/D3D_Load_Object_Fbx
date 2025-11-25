@@ -73,4 +73,6 @@ public:
 	UINT m_nSrvDescriptorIncrementSize = 0;
 
 	void SetSrvDescriptorInfo(ID3D12DescriptorHeap* heap, UINT inc);
+	void PlayAnimation(const std::string& name, bool loop = true, float start = 0.0f);
+
 };
