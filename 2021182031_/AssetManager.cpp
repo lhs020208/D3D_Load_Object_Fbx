@@ -26,6 +26,12 @@ std::string GetTextureFileNameForSubMesh_UnityChan(const SubMesh& sm)
     std::string mat = sm.materialName;
     std::string mesh = sm.meshName;
 
+    char buf[512];
+    _snprintf_s(buf, _TRUNCATE,
+        "[UnityChanTexRule] mesh='%s' material='%s'\n",
+        mesh.c_str(), mat.c_str());
+    OutputDebugStringA(buf);
+
     // 소문자로 변환
     auto lower = [](std::string s) {
         std::transform(s.begin(), s.end(), s.begin(), ::tolower);
@@ -61,11 +67,13 @@ std::string GetTextureFileNameForSubMesh_UnityChan(const SubMesh& sm)
     // eye
     // -----------------------------
     if (mat.find("eyeline") != std::string::npos ||
-        mesh.find("eyeline") != std::string::npos)
+        mesh.find("eyeline") != std::string::npos||
+        mat.find("eyebase") != std::string::npos ||
+        mesh.find("eye_base") != std::string::npos)
         return "eyeline_00.png";
 
-    if (mat.find("eye_R") != std::string::npos ||
-        mesh.find("eye_R") != std::string::npos)
+    if (mat.find("eye_r") != std::string::npos ||
+        mesh.find("eye_r") != std::string::npos)
         return "eye_iris_R_00.png";
 
     if (mat.find("eye") != std::string::npos  ||

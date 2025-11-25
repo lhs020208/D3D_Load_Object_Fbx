@@ -506,8 +506,8 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
     }
 
     // -------------------------------------------------------------------------
-// 9) SubMesh 생성 (UV 복원 추가됨)
-// -------------------------------------------------------------------------
+    // 9) SubMesh 생성 (UV 복원 추가됨)
+    // -------------------------------------------------------------------------
     m_SubMeshes.clear();
 
     auto ToXM3 = [&](const FbxVector4& v) { return XMFLOAT3((float)v[0], (float)v[1], (float)v[2]); };
@@ -523,9 +523,6 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
         // 이름
         FbxNode* node = mesh->GetNode();
         sm.meshName = node ? node->GetName() : "Unnamed";
-        // ----------------------------------------------------------
-        // Material Name Restore (필수! 현재 코드에서 사라진 상태임)
-        // ----------------------------------------------------------
         sm.materialName = "";
         int matCount = node->GetMaterialCount();
         if (matCount > 0)
@@ -536,7 +533,6 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
                 sm.materialName = mat->GetName();
             }
         }
-
         // triangle winding flip 감지
         FbxAMatrix global = node ? node->EvaluateGlobalTransform() : FbxAMatrix();
         FbxAMatrix geo;
@@ -607,7 +603,11 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
                     bool unmapped = false;
                     if (mesh->GetPolygonVertexUV(p, idx[k], uvSetName, uv, unmapped))
                     {
-                        sm.uvs.push_back(ToXM2(uv));
+                        if (mesh->GetPolygonVertexUV(p, idx[k], uvSetName, uv, unmapped))
+                        {
+                            sm.uvs.push_back(XMFLOAT2((float)uv[0], 1.0f - (float)uv[1]));
+                        }
+
                     }
                     else
                     {
