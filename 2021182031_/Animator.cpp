@@ -103,7 +103,7 @@ bool CAnimator::Play(const std::string& clipName, bool loop, float startTime)
             XMStoreFloat4x4(&m_FinalBoneMatrices[i], skin);
         }
     }
-
+    m_NextClipAfterEnd.clear();
     return true;
 }
 
@@ -142,10 +142,30 @@ void CAnimator::Update(float dt)
     //m_fCurrentTime += 0.001f;
 
 
-    if (m_fCurrentTime > m_pCurrentClip->duration)
+    // 1) 현재 클립이 끝났는지 검사
+    if (m_fCurrentTime >= m_pCurrentClip->duration)
     {
-        if (m_bLoop) m_fCurrentTime = fmod(m_fCurrentTime, m_pCurrentClip->duration);
-        else m_fCurrentTime = m_pCurrentClip->duration;
+        if (m_bLoop)
+        {
+            // 루프 재생이면 0으로 되감기
+            m_fCurrentTime = fmodf(m_fCurrentTime, m_pCurrentClip->duration);
+        }
+        else
+        {
+            // loop = false → 더 이상 계속되지 않음
+            if (!m_NextClipAfterEnd.empty())
+            {
+                // 다음 클립으로 전환
+                Play(m_NextClipAfterEnd, true, 0.0f);
+                return;
+            }
+            else
+            {
+                // 아무것도 설정 안 했으면 끝 프레임 유지
+                m_fCurrentTime = m_pCurrentClip->duration;
+                return;
+            }
+        }
     }
 
     const int boneCount = (int)m_Skeleton.size();

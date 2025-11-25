@@ -454,7 +454,8 @@ void CTankScene::OnProcessingKeyboardMessage(HWND hWnd, UINT nMessageID, WPARAM 
 			if (m_pPlayer->move_x < 1)m_pPlayer->move_x += 1;
 			break;
 		default:
-			m_pPlayer->PlayAnimation("Jump", true, 0.0f);
+			m_pPlayer->PlayAnimation("Jump", false, 0.0f);
+			m_pPlayer->SetNextAnimation("Idle");
 			break;
 		}
 		break;

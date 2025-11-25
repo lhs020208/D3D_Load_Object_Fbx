@@ -50,6 +50,7 @@ public:
     // 애니메이션이 존재하는지 확인
     bool HasClip(const std::string& name) const;
 
+    void SetNextClipAfterEnd(const std::string& clip) { m_NextClipAfterEnd = clip; }
 private:
     // 스켈레톤
     std::vector<Bone> m_Skeleton;   // Bone.name, parentIndex, offsetMatrix 등
@@ -77,4 +78,7 @@ private:
     bool LoadClipFromFBXAndAdd(const char* filename,
         const std::string& clipName,
         float timeScale = 1.0f);
+
+    string m_NextClipAfterEnd;
+
 };

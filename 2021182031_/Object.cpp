@@ -333,3 +333,14 @@ void CGameObject::PlayAnimation(const std::string& clipName, bool loop, float st
 	}
 }
 
+void CGameObject::SetNextAnimation(const std::string& clip)
+{
+	if (!m_ppMeshes) return;
+	for (int i = 0; i < m_nMeshes; ++i)
+	{
+		CAnimator* anim = m_ppMeshes[i]->GetAnimator();
+		if (!anim) return;
+
+		anim->SetNextClipAfterEnd(clip);
+	}
+}
