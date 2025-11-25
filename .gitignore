@@ -82,8 +82,8 @@ out/
 vcpkg_installed/
 packages/
 .vcpkg-root
-*.lib
-*.dll
+#*.lib
+#*.dll
 *.exe
 
 # =========================
