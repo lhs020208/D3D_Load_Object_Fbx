@@ -258,7 +258,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	// 2) UnityChan Mesh ε
 	//=====================================================================
-	CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.fbx", 2);
+	CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.bin", 1);
 
 	// [추가] 본이 있다면 스키닝 활성화
 	int boneCount = UnitychanMesh->GetBoneCount();

@@ -223,7 +223,7 @@ CMesh::CMesh(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandLis
 {
     m_pd3dDevice = pd3dDevice;
 	if (pstrFileName) {
-		if (FileType == 1) LoadMeshFromOBJ(pd3dDevice, pd3dCommandList, pstrFileName);
+		if (FileType == 1) LoadMeshFromBIN(pd3dDevice, pd3dCommandList, pstrFileName);
 		if (FileType == 2) LoadMeshFromFBX(pd3dDevice, pd3dCommandList, pstrFileName);
 	}
 }
