@@ -840,33 +840,34 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
             << " verts=" << vcount
             << " indices=" << icount << "\n";
 
-        XMFLOAT3 bbMin(+FLT_MAX, +FLT_MAX, +FLT_MAX);
-        XMFLOAT3 bbMax(-FLT_MAX, -FLT_MAX, -FLT_MAX);
-
-        for (auto& sm : m_SubMeshes)
-        {
-            for (auto& pos : sm.positions)
-            {
-                bbMin.x = min(bbMin.x, pos.x);
-                bbMin.y = min(bbMin.y, pos.y);
-                bbMin.z = min(bbMin.z, pos.z);
-
-                bbMax.x = max(bbMax.x, pos.x);
-                bbMax.y = max(bbMax.y, pos.y);
-                bbMax.z = max(bbMax.z, pos.z);
-            }
-        }
-
-        char buf[512];
-        sprintf_s(buf,
-            "[AABB] min=(%.2f, %.2f, %.2f) max=(%.2f, %.2f, %.2f)\n",
-            bbMin.x, bbMin.y, bbMin.z,
-            bbMax.x, bbMax.y, bbMax.z);
-        OutputDebugStringA(buf);
-
         totalVerts += vcount;
         totalIndices += icount;
     }
+
+
+    XMFLOAT3 bbMin(+FLT_MAX, +FLT_MAX, +FLT_MAX);
+    XMFLOAT3 bbMax(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+
+    for (auto& sm : m_SubMeshes)
+    {
+        for (auto& pos : sm.positions)
+        {
+            bbMin.x = min(bbMin.x, pos.x);
+            bbMin.y = min(bbMin.y, pos.y);
+            bbMin.z = min(bbMin.z, pos.z);
+
+            bbMax.x = max(bbMax.x, pos.x);
+            bbMax.y = max(bbMax.y, pos.y);
+            bbMax.z = max(bbMax.z, pos.z);
+        }
+    }
+
+    char buf[512];
+    sprintf_s(buf,
+        "[AABB] min=(%.2f, %.2f, %.2f) max=(%.2f, %.2f, %.2f)\n",
+        bbMin.x, bbMin.y, bbMin.z,
+        bbMax.x, bbMax.y, bbMax.z);
+    OutputDebugStringA(buf);
 
     dbg << "\nTotal Vertices : " << totalVerts << "\n";
     dbg << "Total Indices  : " << totalIndices << "\n";
@@ -1321,7 +1322,6 @@ BOOL CMesh::RayIntersectionByTriangle(XMVECTOR& xmRayOrigin, XMVECTOR& xmRayDire
 	return(bIntersected);
 }
 
-#include <io.h>
 void CMesh::LoadTextureFromFile(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList,
     ID3D12DescriptorHeap* srvHeap, UINT descriptorIndex, const wchar_t* fileName, int subMeshIndex)
 {

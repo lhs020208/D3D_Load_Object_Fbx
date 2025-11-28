@@ -258,7 +258,8 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	// 2) UnityChan Mesh ε
 	//=====================================================================
-	CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.bin", 1);
+	//CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.bin", 1);
+	CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/orc with skin and rig.fbx", 2);
 	// [추가] 본이 있다면 스키닝 활성화
 	int boneCount = UnitychanMesh->GetBoneCount();
 	if (boneCount > 0)
@@ -368,7 +369,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	// 7) UnityChan 애니메이션(JUMP00) 로드 & Animator에 등록 + 재생
 	//=====================================================================
-	/*
+	
 	{
 		AnimationClip jumpClip;
 		bool animLoaded = UnitychanMesh->LoadAnimationFromFBX(
@@ -377,7 +378,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 
 		AnimationClip idleClip;
 		bool idleLoaded = UnitychanMesh->LoadAnimationFromFBX(
-			"Models/unitychan_WAIT00.fbx","Idle",idleClip,1.0f
+			"Models/WalkWalk.fbx","Idle",idleClip,1.0f
 		);
 
 
@@ -395,7 +396,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 		}
 	}
 	m_pPlayer->PlayAnimation("Idle", true, 0.0f);
-	*/
+	
 }
 
 
