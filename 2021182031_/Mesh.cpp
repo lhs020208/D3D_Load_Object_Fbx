@@ -2,6 +2,8 @@
 // File: CGameObject.cpp
 //-----------------------------------------------------------------------------
 
+#include <fstream>
+#include <cstdint>
 #include "stdafx.h"
 #include "Mesh.h"
 #include "Animator.h"
@@ -812,11 +814,6 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
 
     mgr->Destroy();
 }
-// Mesh.cpp 제일 위쪽에 필요하다면
-#include <fstream>
-#include <cstdint>
-
-// ...
 
 void CMesh::LoadMeshFromBIN(ID3D12Device* device,
     ID3D12GraphicsCommandList* cmdList,

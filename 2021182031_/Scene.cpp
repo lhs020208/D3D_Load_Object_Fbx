@@ -283,7 +283,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	for (auto& sm : UnitychanMesh->m_SubMeshes)
 	{
 		std::string texFile = GetTextureFileNameForSubMesh(sm, assetType);
-		std::wstring wpath = ToWstring(std::string("Models/Texture/") + texFile);
+		std::wstring wpath = ToWstring(std::string("Models/UnitychanTexture/") + texFile);
 
 		UnitychanMesh->LoadTextureFromFile(
 			pd3dDevice,
@@ -369,7 +369,6 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	// 7) UnityChan 애니메이션(JUMP00) 로드 & Animator에 등록 + 재생
 	//=====================================================================
-	
 	{
 		AnimationClip jumpClip;
 		bool animLoaded = UnitychanMesh->LoadAnimationFromFBX(
