@@ -330,14 +330,32 @@ void CGameObject::SetRotationTransform(XMFLOAT4X4* pmxf4x4Transform)
 void CGameObject::PlayAnimation(const std::string& clipName, bool loop, float start)
 {
 	if (!m_ppMeshes) return;
+
 	for (int i = 0; i < m_nMeshes; ++i)
 	{
-		CAnimator* anim = m_ppMeshes[i]->GetAnimator();
-		if (!anim) return;
+		CMesh* mesh = m_ppMeshes[i];
+		if (!mesh) continue;
 
-		anim->Play(clipName, loop, start);
+		CAnimator* anim = mesh->GetAnimator();
+		if (!anim) continue;
+
+		if (!anim->Play(clipName, loop, start))
+			continue;
+
+		// ★ Play() 안에서 이미 m_FinalBoneMatrices는
+		//    startTime 시점 포즈로 계산된 상태임
+
+		const auto& mats = anim->GetFinalBoneMatrices();
+		if (!mats.empty() && mesh->IsSkinnedMesh() && mesh->HasBoneCB())
+		{
+			mesh->UpdateBoneTransformsOnGPU(
+				nullptr,
+				mats.data(),
+				static_cast<int>(mats.size()));
+		}
 	}
 }
+
 
 void CGameObject::SetNextAnimation(const std::string& clip)
 {

@@ -665,7 +665,10 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
 
         m_SubMeshes.push_back(sm);
     }
-
+    if (!m_Bones.empty())
+    {
+        EnableSkinning((int)m_Bones.size());
+    }
 
     // -------------------------------------------------------------------------
     // 10) GPU VB/IB 생성 (기존 동일)
@@ -805,6 +808,7 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
         }
     }
 
+
     // -------------------------------------------------------------------------
     // 추가 진단 로그 출력
     // -------------------------------------------------------------------------
@@ -829,6 +833,7 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
     int totalVerts = 0;
     int totalIndices = 0;
 
+    /*
     for (int si = 0; si < (int)m_SubMeshes.size(); ++si) {
         const auto& sm = m_SubMeshes[si];
         int vcount = (int)sm.positions.size();
@@ -843,10 +848,73 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
         totalVerts += vcount;
         totalIndices += icount;
     }
+    */
 
+    // --- ★ 추가 진단: 스킨 데이터 일관성 / 본 사용 여부 체크 ---
+    if (!m_Bones.empty())
+    {
+        std::vector<int> boneUseCount(m_Bones.size(), 0);
+
+        // boneIndices와 positions 개수 일치 여부 + 본 사용 카운트
+        for (size_t si = 0; si < m_SubMeshes.size(); ++si)
+        {
+            const auto& sm = m_SubMeshes[si];
+
+            if (sm.positions.size() != sm.boneIndices.size())
+            {
+                std::string msg = "[SkinDebug] SubMesh " + std::to_string(si) +
+                    " pos(" + std::to_string(sm.positions.size()) +
+                    ") != boneIndices(" + std::to_string(sm.boneIndices.size()) + ")\n";
+                OutputDebugStringA(msg.c_str());
+            }
+
+            for (size_t vi = 0; vi < sm.boneIndices.size(); ++vi)
+            {
+                const XMUINT4& bi = sm.boneIndices[vi];
+                const XMFLOAT4& bw = sm.boneWeights[vi];
+
+                auto countIfUsed = [&](UINT idx, float w)
+                    {
+                        if (w > 0.0f && idx < boneUseCount.size())
+                            boneUseCount[idx]++;
+                    };
+
+                countIfUsed(bi.x, bw.x);
+                countIfUsed(bi.y, bw.y);
+                countIfUsed(bi.z, bw.z);
+                countIfUsed(bi.w, bw.w);
+            }
+        }
+
+        // 본별 사용 여부 및 offsetMatrix 스케일 체크 (앞 몇 개만 찍음)
+        for (size_t i = 0; i < m_Bones.size() && i < 32; ++i)
+        {
+            const Bone& b = m_Bones[i];
+            XMMATRIX off = XMLoadFloat4x4(&b.offsetMatrix);
+
+            XMVECTOR s, r, t;
+            if (!XMMatrixDecompose(&s, &r, &t, off))
+            {
+                std::string msg = "[SkinDebug] Bone " + std::to_string(i) +
+                    " (" + b.name + ") invalid offsetMatrix\n";
+                OutputDebugStringA(msg.c_str());
+                continue;
+            }
+
+            XMFLOAT3 sf;
+            XMStoreFloat3(&sf, s);
+
+            char buf2[256];
+            sprintf_s(buf2,
+                "[SkinDebug] Bone[%zu] '%s' usedByVerts=%d offsetScale=(%.3f,%.3f,%.3f)\n",
+                i, b.name.c_str(), boneUseCount[i], sf.x, sf.y, sf.z);
+            OutputDebugStringA(buf2);
+        }
+    }
 
     XMFLOAT3 bbMin(+FLT_MAX, +FLT_MAX, +FLT_MAX);
     XMFLOAT3 bbMax(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+
 
     for (auto& sm : m_SubMeshes)
     {
@@ -1806,7 +1874,43 @@ bool CMesh::LoadAnimationFromFBX(
     // 4) 애니메이션 rest pose(local) 추출 + deltaLocal 계산
     // ============================================================
     {
-        FbxTime restTime = timeSpan.GetStart();   // 클립 시작 프레임
+        // 4-a) 먼저 전체 본에서 "가장 이른 키프레임 시간"을 찾는다.
+        FbxTime restTime = timeSpan.GetStart();
+
+        {
+            bool hasKey = false;
+            FbxTime firstKeyTime; // 초기값 없음
+
+            std::function<void(FbxNode*)> findFirst = [&](FbxNode* node)
+                {
+                    if (!node) return;
+
+                    std::set<FbxTime> keyTimes;
+                    CollectKeyTimes(node, layer, keyTimes);
+
+                    for (FbxTime t : keyTimes)
+                    {
+                        if (t < timeSpan.GetStart() || t > timeSpan.GetStop())
+                            continue;
+
+                        if (!hasKey || t < firstKeyTime)
+                        {
+                            firstKeyTime = t;
+                            hasKey = true;
+                        }
+                    }
+
+                    int childCount = node->GetChildCount();
+                    for (int i = 0; i < childCount; ++i)
+                        findFirst(node->GetChild(i));
+                };
+
+            findFirst(scene->GetRootNode());
+
+            if (hasKey)
+                restTime = firstKeyTime; // ★ 이제 restTime은 "실제 첫 키프레임 시간"
+        }
+
 
         for (size_t i = 0; i < m_Bones.size(); ++i)
         {

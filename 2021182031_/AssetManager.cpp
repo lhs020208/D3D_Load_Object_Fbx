@@ -113,6 +113,22 @@ std::string GetTextureFileNameForSubMesh_BaseChan(const SubMesh& sm)
 
     return "Tex_Body.png";
 }
+std::string GetTextureFileNameForSubMesh_Orc(const SubMesh& sm)
+{
+    std::string mat = sm.materialName;
+    std::string mesh = sm.meshName;
+
+    auto lower = [](std::string s) {
+        std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+        return s;
+        };
+
+    mat = lower(mat);
+    mesh = lower(mesh);
+
+    return "Orc_Orc_BaseColor.png";
+}
+
 
 std::string GetTextureFileNameForSubMesh(const SubMesh& sm, AssetType type)
 {
@@ -127,8 +143,8 @@ std::string GetTextureFileNameForSubMesh(const SubMesh& sm, AssetType type)
     //case AssetType::Robot:
     //    return GetTextureFileNameForSubMesh_Robot(sm);
 
-    //case AssetType::Orc:
-    //    return GetTextureFileNameForSubMesh_Orc(sm);
+    case AssetType::Orc:
+        return GetTextureFileNameForSubMesh_Orc(sm);
 
     default:
         return "default.png";
