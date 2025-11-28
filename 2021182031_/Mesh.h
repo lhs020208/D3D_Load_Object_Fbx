@@ -141,6 +141,8 @@ public:
 
 	void LoadMeshFromOBJ(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName);
 	void LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const char* filename);
+	void LoadMeshFromBIN(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const char* filename);
+
 	void EnableSkinning(int nBones);
 
 	//void LoadTextureFromFile(ID3D12Device* device,ID3D12GraphicsCommandList* cmdList,

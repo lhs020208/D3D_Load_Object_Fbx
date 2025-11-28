@@ -812,6 +812,324 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
 
     mgr->Destroy();
 }
+// Mesh.cpp 제일 위쪽에 필요하다면
+#include <fstream>
+#include <cstdint>
+
+// ...
+
+void CMesh::LoadMeshFromBIN(ID3D12Device* device,
+    ID3D12GraphicsCommandList* cmdList,
+    const char* filename)
+{
+    // ----------------------------------------------------
+    // 0) 파일 열기
+    // ----------------------------------------------------
+    std::ifstream fin(filename, std::ios::binary);
+    if (!fin.is_open()) return;
+
+    auto ReadRaw = [&](void* dst, size_t sz) -> bool
+        {
+            fin.read(reinterpret_cast<char*>(dst), sz);
+            return fin.good();
+        };
+
+    auto ReadUInt32 = [&](uint32_t& v) -> bool { return ReadRaw(&v, sizeof(v)); };
+    auto ReadInt32 = [&](int32_t& v)  -> bool { return ReadRaw(&v, sizeof(v)); };
+    auto ReadUInt16 = [&](uint16_t& v) -> bool { return ReadRaw(&v, sizeof(v)); };
+
+    auto ReadString = [&](std::string& s) -> bool
+        {
+            uint16_t len = 0;
+            if (!ReadUInt16(len)) return false;
+            if (len == 0) { s.clear(); return true; }
+
+            s.resize(len);
+            if (!ReadRaw(s.data(), len)) return false;
+            return true;
+        };
+
+    // ----------------------------------------------------
+    // 1) 헤더 읽기
+    // ----------------------------------------------------
+    char magic[4] = {};
+    if (!ReadRaw(magic, 4)) return;
+    if (!(magic[0] == 'M' && magic[1] == 'B' && magic[2] == 'I' && magic[3] == 'N'))
+        return;
+
+    uint32_t version = 0;
+    uint32_t flags = 0;
+    uint32_t boneCount = 0;
+    uint32_t subMeshCount = 0;
+
+    if (!ReadUInt32(version)) return;
+    if (!ReadUInt32(flags))   return;
+    if (!ReadUInt32(boneCount)) return;
+    if (!ReadUInt32(subMeshCount)) return;
+
+    if (version != 1) return; // 버전 체크
+
+    // 기존 데이터 정리
+    m_Bones.clear();
+    m_BoneNameToIndex.clear();
+    m_SubMeshes.clear();
+
+    // ----------------------------------------------------
+    // 2) Skeleton 섹션 → m_Bones 채우기
+    // ----------------------------------------------------
+    m_Bones.reserve(boneCount);
+
+    for (uint32_t i = 0; i < boneCount; ++i)
+    {
+        std::string name;
+        if (!ReadString(name)) return;
+
+        int32_t parentIndex = -1;
+        if (!ReadInt32(parentIndex)) return;
+
+        float bindLocalArr[16];
+        float offsetArr[16];
+        if (!ReadRaw(bindLocalArr, sizeof(bindLocalArr)))  return;
+        if (!ReadRaw(offsetArr, sizeof(offsetArr)))     return;
+
+        Bone b{};
+        b.name = name;
+        b.parentIndex = parentIndex;
+
+        // float[16] → XMFLOAT4X4
+        for (int r = 0; r < 4; ++r)
+        {
+            for (int c = 0; c < 4; ++c)
+            {
+                b.bindLocal.m[r][c] = bindLocalArr[r * 4 + c];
+                b.offsetMatrix.m[r][c] = offsetArr[r * 4 + c];
+            }
+        }
+
+        XMStoreFloat4x4(&b.animRestLocal, XMMatrixIdentity());
+        XMStoreFloat4x4(&b.deltaLocal, XMMatrixIdentity());
+
+        m_BoneNameToIndex[b.name] = static_cast<int>(m_Bones.size());
+        m_Bones.push_back(b);
+    }
+
+    // ----------------------------------------------------
+    // 3) SubMesh 섹션 → m_SubMeshes 채우기
+    // ----------------------------------------------------
+    m_SubMeshes.reserve(subMeshCount);
+
+    for (uint32_t si = 0; si < subMeshCount; ++si)
+    {
+        SubMesh sm{};
+
+        // 3-1) meshName / materialName
+        if (!ReadString(sm.meshName))     return;
+        if (!ReadString(sm.materialName)) return;
+
+        // 3-2) vertexCount / indexCount
+        uint32_t vertexCount = 0;
+        uint32_t indexCount = 0;
+        if (!ReadUInt32(vertexCount)) return;
+        if (!ReadUInt32(indexCount))  return;
+
+        sm.positions.reserve(vertexCount);
+        sm.normals.reserve(vertexCount);
+        sm.uvs.reserve(vertexCount);
+        sm.boneIndices.reserve(vertexCount);
+        sm.boneWeights.reserve(vertexCount);
+        sm.indices.reserve(indexCount);
+
+        // 3-3) 정점 데이터
+        for (uint32_t v = 0; v < vertexCount; ++v)
+        {
+            float pos[3];
+            float nml[3];
+            float uv[2];
+            uint32_t bi[4];
+            float bw[4];
+
+            if (!ReadRaw(pos, sizeof(pos)))       return;
+            if (!ReadRaw(nml, sizeof(nml)))       return;
+            if (!ReadRaw(uv, sizeof(uv)))        return;
+            if (!ReadRaw(bi, sizeof(bi)))        return;
+            if (!ReadRaw(bw, sizeof(bw)))        return;
+
+            XMFLOAT3 p(pos[0], pos[1], pos[2]);
+            XMFLOAT3 n(nml[0], nml[1], nml[2]);
+            XMFLOAT2 t(uv[0], uv[1]);
+
+            XMUINT4  boneIdx(bi[0], bi[1], bi[2], bi[3]);
+            XMFLOAT4 boneW(bw[0], bw[1], bw[2], bw[3]);
+
+            sm.positions.push_back(p);
+            sm.normals.push_back(n);
+            sm.uvs.push_back(t);
+            sm.boneIndices.push_back(boneIdx);
+            sm.boneWeights.push_back(boneW);
+        }
+
+        // 3-4) 인덱스 데이터
+        for (uint32_t ii = 0; ii < indexCount; ++ii)
+        {
+            uint32_t idx = 0;
+            if (!ReadUInt32(idx)) return;
+            sm.indices.push_back(idx);
+        }
+
+        m_SubMeshes.push_back(std::move(sm));
+    }
+
+    fin.close();
+
+    // ----------------------------------------------------
+    // 4) 스키닝 여부 판단
+    // ----------------------------------------------------
+    if (!m_Bones.empty())
+    {
+        // FBX 로더에서 하던 것처럼 본 개수만 넘겨서 CBV 생성
+        EnableSkinning(static_cast<int>(m_Bones.size()));
+    }
+
+    // ----------------------------------------------------
+    // 5) GPU Vertex/Index Buffer 생성
+    //     → LoadMeshFromFBX()의 10) 부분 그대로 재사용
+    // ----------------------------------------------------
+    for (auto& sm : m_SubMeshes)
+    {
+        const auto& positions = sm.positions;
+        const auto& normals = sm.normals;
+        const auto& uvs = sm.uvs;
+        const auto& indices = sm.indices;
+        const auto& boneIndices = sm.boneIndices;
+        const auto& boneWeights = sm.boneWeights;
+
+        std::vector<SkinnedVertex> vertices(positions.size());
+
+        for (size_t i = 0; i < positions.size(); ++i)
+        {
+            SkinnedVertex v{};
+            v.position = positions[i];
+            v.normal = (i < normals.size() ? normals[i] : XMFLOAT3(0, 1, 0));
+            v.uv = (i < uvs.size() ? uvs[i] : XMFLOAT2(0, 0));
+
+            if (i < boneIndices.size())
+            {
+                const XMUINT4& bi = boneIndices[i];
+                v.boneIndices[0] = bi.x;
+                v.boneIndices[1] = bi.y;
+                v.boneIndices[2] = bi.z;
+                v.boneIndices[3] = bi.w;
+            }
+            else
+            {
+                v.boneIndices[0] = 0;
+                v.boneIndices[1] = 0;
+                v.boneIndices[2] = 0;
+                v.boneIndices[3] = 0;
+            }
+
+            if (i < boneWeights.size())
+            {
+                const XMFLOAT4& bw = boneWeights[i];
+                v.boneWeights[0] = bw.x;
+                v.boneWeights[1] = bw.y;
+                v.boneWeights[2] = bw.z;
+                v.boneWeights[3] = bw.w;
+            }
+            else
+            {
+                v.boneWeights[0] = 1.0f;
+                v.boneWeights[1] = 0.0f;
+                v.boneWeights[2] = 0.0f;
+                v.boneWeights[3] = 0.0f;
+            }
+
+            vertices[i] = v;
+        }
+
+        UINT vbSize = sizeof(SkinnedVertex) * (UINT)vertices.size();
+
+        CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
+        CD3DX12_RESOURCE_DESC   vbDesc = CD3DX12_RESOURCE_DESC::Buffer(vbSize);
+
+        // Vertex Buffer (Default)
+        HRESULT hr = device->CreateCommittedResource(
+            &heapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &vbDesc,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            nullptr,
+            IID_PPV_ARGS(&sm.vb));
+
+        CD3DX12_HEAP_PROPERTIES uploadProps(D3D12_HEAP_TYPE_UPLOAD);
+        hr = device->CreateCommittedResource(
+            &uploadProps,
+            D3D12_HEAP_FLAG_NONE,
+            &vbDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&sm.vbUpload));
+
+        void* mapped = nullptr;
+        CD3DX12_RANGE range(0, 0);
+        sm.vbUpload->Map(0, &range, &mapped);
+        memcpy(mapped, vertices.data(), vbSize);
+        sm.vbUpload->Unmap(0, nullptr);
+
+        cmdList->CopyBufferRegion(sm.vb, 0, sm.vbUpload, 0, vbSize);
+
+        CD3DX12_RESOURCE_BARRIER vbBarrier =
+            CD3DX12_RESOURCE_BARRIER::Transition(
+                sm.vb,
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+        cmdList->ResourceBarrier(1, &vbBarrier);
+
+        sm.vbView.BufferLocation = sm.vb->GetGPUVirtualAddress();
+        sm.vbView.SizeInBytes = vbSize;
+        sm.vbView.StrideInBytes = sizeof(SkinnedVertex);
+
+        // Index Buffer
+        if (!indices.empty())
+        {
+            UINT ibSize = sizeof(uint32_t) * (UINT)indices.size();
+            CD3DX12_RESOURCE_DESC ibDesc = CD3DX12_RESOURCE_DESC::Buffer(ibSize);
+
+            hr = device->CreateCommittedResource(
+                &heapProps,
+                D3D12_HEAP_FLAG_NONE,
+                &ibDesc,
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                nullptr,
+                IID_PPV_ARGS(&sm.ib));
+
+            hr = device->CreateCommittedResource(
+                &uploadProps,
+                D3D12_HEAP_FLAG_NONE,
+                &ibDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(&sm.ibUpload));
+
+            sm.ibUpload->Map(0, &range, &mapped);
+            memcpy(mapped, indices.data(), ibSize);
+            sm.ibUpload->Unmap(0, nullptr);
+
+            cmdList->CopyBufferRegion(sm.ib, 0, sm.ibUpload, 0, ibSize);
+
+            CD3DX12_RESOURCE_BARRIER ibBarrier =
+                CD3DX12_RESOURCE_BARRIER::Transition(
+                    sm.ib,
+                    D3D12_RESOURCE_STATE_COPY_DEST,
+                    D3D12_RESOURCE_STATE_INDEX_BUFFER);
+            cmdList->ResourceBarrier(1, &ibBarrier);
+
+            sm.ibView.BufferLocation = sm.ib->GetGPUVirtualAddress();
+            sm.ibView.SizeInBytes = ibSize;
+            sm.ibView.Format = DXGI_FORMAT_R32_UINT;
+        }
+    }
+}
 
 
 
