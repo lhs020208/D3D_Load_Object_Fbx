@@ -259,7 +259,6 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	// 2) UnityChan Mesh ε
 	//=====================================================================
 	CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.bin", 1);
-
 	// [추가] 본이 있다면 스키닝 활성화
 	int boneCount = UnitychanMesh->GetBoneCount();
 	if (boneCount > 0)
@@ -285,6 +284,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 		std::string texFile = GetTextureFileNameForSubMesh(sm, assetType);
 		std::wstring wpath = ToWstring(std::string("Models/UnitychanTexture/") + texFile);
 
+
 		UnitychanMesh->LoadTextureFromFile(
 			pd3dDevice,
 			pd3dCommandList,
@@ -296,7 +296,6 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 
 		subIdx++;
 	}
-
 	//=====================================================================
 	// 5) Player 설정
 	//=====================================================================
@@ -369,6 +368,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	// 7) UnityChan 애니메이션(JUMP00) 로드 & Animator에 등록 + 재생
 	//=====================================================================
+	/*
 	{
 		AnimationClip jumpClip;
 		bool animLoaded = UnitychanMesh->LoadAnimationFromFBX(
@@ -395,6 +395,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 		}
 	}
 	m_pPlayer->PlayAnimation("Idle", true, 0.0f);
+	*/
 }
 
 

@@ -90,7 +90,7 @@ std::string GetTextureFileNameForSubMesh_UnityChan(const SubMesh& sm)
     // Fallback
     return "skin_01.png";
 }
-std::string GetTextureFileNameForSubMesh_BoxMan(const SubMesh& sm)
+std::string GetTextureFileNameForSubMesh_BaseChan(const SubMesh& sm)
 {
     std::string mat = sm.materialName;
     std::string mesh = sm.meshName;
@@ -103,23 +103,15 @@ std::string GetTextureFileNameForSubMesh_BoxMan(const SubMesh& sm)
     mat = lower(mat);
     mesh = lower(mesh);
 
-    // ========= 1) Skin / Body =========
-    if (mat.find("body") != std::string::npos ||
-        mesh.find("body") != std::string::npos)
-        return "body.png";
+    if (mat.find("bikini") != std::string::npos ||
+        mesh.find("bikini") != std::string::npos)
+        return "Tex_underwear_1.png";
 
-    // ========= 2) Face / Eye =========
-    if (mat.find("eye") != std::string::npos ||
-        mesh.find("head") != std::string::npos)
-        return "face.png";
+    if (mat.find("Image_20.005") != std::string::npos ||
+        mesh.find("Hair1") != std::string::npos)
+        return "Tex_Hair1_hair.png";
 
-    // ========= 3) Clothes =========
-    if (mat.find("cloth") != std::string::npos ||
-        mesh.find("pants") != std::string::npos)
-        return "cloth.png";
-
-    // ±âº»°ª
-    return "default.png";
+    return "Tex_Body.png";
 }
 
 std::string GetTextureFileNameForSubMesh(const SubMesh& sm, AssetType type)
@@ -129,8 +121,8 @@ std::string GetTextureFileNameForSubMesh(const SubMesh& sm, AssetType type)
     case AssetType::UnityChan:
         return GetTextureFileNameForSubMesh_UnityChan(sm);
 
-    case AssetType::BoxMan:
-        return GetTextureFileNameForSubMesh_BoxMan(sm);
+    case AssetType::BaseChan:
+        return GetTextureFileNameForSubMesh_BaseChan(sm);
 
     //case AssetType::Robot:
     //    return GetTextureFileNameForSubMesh_Robot(sm);

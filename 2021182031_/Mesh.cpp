@@ -805,12 +805,91 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
         }
     }
 
-    std::ostringstream log;
-    log << "[FBX] Mesh Loaded: " << filename << "\n"
-        << "   BaseMeshIndex: " << baseMeshIndex << "\n"
-        << "   SubMeshes: " << m_SubMeshes.size() << "\n"
-        << "   Bones    : " << m_Bones.size() << "\n";
-    OutputDebugStringA(log.str().c_str());
+    // -------------------------------------------------------------------------
+    // 추가 진단 로그 출력
+    // -------------------------------------------------------------------------
+    std::ostringstream dbg;
+    dbg << "\n========== FBX Load Summary ==========\n";
+    dbg << "File: " << filename << "\n";
+    dbg << "BaseMeshIndex: " << baseMeshIndex << "\n";
+    dbg << "SubMesh Count: " << m_SubMeshes.size() << "\n";
+    dbg << "Bone Count: " << m_Bones.size() << "\n\n";
+
+    // Bone 목록 (최대 10개만)
+    dbg << "Bones (up to 10 shown):\n";
+    for (int i = 0; i < (int)m_Bones.size() && i < 10; ++i) {
+        dbg << "  [" << i << "] " << m_Bones[i].name
+            << " (parent=" << m_Bones[i].parentIndex << ")\n";
+    }
+    if (m_Bones.size() > 10)
+        dbg << "  ... (" << m_Bones.size() - 10 << " more)\n";
+    dbg << "\n";
+
+    // SubMesh 상세
+    int totalVerts = 0;
+    int totalIndices = 0;
+
+    for (int si = 0; si < (int)m_SubMeshes.size(); ++si) {
+        const auto& sm = m_SubMeshes[si];
+        int vcount = (int)sm.positions.size();
+        int icount = (int)sm.indices.size();
+
+        dbg << "SubMesh[" << si << "] "
+            << "name=" << sm.meshName
+            << " mat=" << sm.materialName
+            << " verts=" << vcount
+            << " indices=" << icount << "\n";
+
+        XMFLOAT3 bbMin(+FLT_MAX, +FLT_MAX, +FLT_MAX);
+        XMFLOAT3 bbMax(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+
+        for (auto& sm : m_SubMeshes)
+        {
+            for (auto& pos : sm.positions)
+            {
+                bbMin.x = min(bbMin.x, pos.x);
+                bbMin.y = min(bbMin.y, pos.y);
+                bbMin.z = min(bbMin.z, pos.z);
+
+                bbMax.x = max(bbMax.x, pos.x);
+                bbMax.y = max(bbMax.y, pos.y);
+                bbMax.z = max(bbMax.z, pos.z);
+            }
+        }
+
+        char buf[512];
+        sprintf_s(buf,
+            "[AABB] min=(%.2f, %.2f, %.2f) max=(%.2f, %.2f, %.2f)\n",
+            bbMin.x, bbMin.y, bbMin.z,
+            bbMax.x, bbMax.y, bbMax.z);
+        OutputDebugStringA(buf);
+
+        totalVerts += vcount;
+        totalIndices += icount;
+    }
+
+    dbg << "\nTotal Vertices : " << totalVerts << "\n";
+    dbg << "Total Indices  : " << totalIndices << "\n";
+
+    // baseMesh의 PolyCount 확인
+    dbg << "\nBaseMesh PolyCount: " << baseMesh->GetPolygonCount() << "\n";
+    dbg << "BaseMesh CPCount : " << baseMesh->GetControlPointsCount() << "\n";
+
+    // Skin 여부 통계
+    int skinnedMeshes = 0;
+    for (bool b : meshHasSkin) if (b) skinnedMeshes++;
+    dbg << "Skinned Meshes: " << skinnedMeshes << " / " << meshes.size() << "\n";
+
+    dbg << "======================================\n\n";
+
+    OutputDebugStringA(dbg.str().c_str());
+    for (int i = 0; i < m_SubMeshes.size(); i++)
+    {
+        std::string msg = "[Check] SubMesh " + std::to_string(i) +
+            " material = " + m_SubMeshes[i].materialName + "\n";
+        OutputDebugStringA(msg.c_str());
+    }
+
 
     mgr->Destroy();
 }
@@ -1242,10 +1321,11 @@ BOOL CMesh::RayIntersectionByTriangle(XMVECTOR& xmRayOrigin, XMVECTOR& xmRayDire
 	return(bIntersected);
 }
 
+#include <io.h>
 void CMesh::LoadTextureFromFile(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList,
     ID3D12DescriptorHeap* srvHeap, UINT descriptorIndex, const wchar_t* fileName, int subMeshIndex)
 {
-    if (subMeshIndex < 0 || subMeshIndex >= (int)m_SubMeshes.size())
+    if (subMeshIndex < 0 || subMeshIndex >= (int)m_SubMeshes.size()) 
         return;
 
     SubMesh& sm = m_SubMeshes[subMeshIndex];
