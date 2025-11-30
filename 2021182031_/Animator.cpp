@@ -104,6 +104,35 @@ bool CAnimator::Play(const std::string& clipName, bool loop, float startTime)
         }
     }
     m_NextClipAfterEnd.clear();
+
+    /*
+    {
+        const int boneCount = (int)m_Skeleton.size();
+
+        for (int i = 0; i < boneCount; ++i)
+        {
+            const Bone& b = m_Skeleton[i];
+            const XMFLOAT4X4& g = m_GlobalPose[i];
+
+            char buf[256];
+            sprintf_s(buf,
+                "[Animator::Play] Bone[%d] '%s'\n"
+                "  Row0 = %.3f %.3f %.3f %.3f\n"
+                "  Row1 = %.3f %.3f %.3f %.3f\n"
+                "  Row2 = %.3f %.3f %.3f %.3f\n"
+                "  Row3 = %.3f %.3f %.3f %.3f\n",
+                i, b.name.c_str(),
+                g.m[0][0], g.m[0][1], g.m[0][2], g.m[0][3],
+                g.m[1][0], g.m[1][1], g.m[1][2], g.m[1][3],
+                g.m[2][0], g.m[2][1], g.m[2][2], g.m[2][3],
+                g.m[3][0], g.m[3][1], g.m[3][2], g.m[3][3]
+            );
+
+            OutputDebugStringA(buf);
+        }
+    }
+    */
+
     return true;
 }
 

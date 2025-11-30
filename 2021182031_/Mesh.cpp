@@ -329,6 +329,50 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
     FbxScene* scene = FbxScene::Create(mgr, "scene");
     imp->Import(scene);
     imp->Destroy();
+    // =============================================================
+// [Debug] 모델 FBX에서 본들이 애니메이션 키를 가지고 있는지 검사
+// =============================================================
+    {
+        std::ostringstream os;
+        os << "[FBX Mesh] Keyframe Check for File: " << filename << "\n";
+
+        FbxAnimStack* stack = scene->GetSrcObject<FbxAnimStack>(0);
+        if (!stack)
+        {
+            os << "  No AnimStack (model FBX usually has no keys).\n";
+            OutputDebugStringA(os.str().c_str());
+        }
+        else
+        {
+            FbxAnimLayer* layer = stack->GetMember<FbxAnimLayer>(0);
+            if (!layer)
+            {
+                os << "  AnimStack exists but no AnimLayer.\n";
+                OutputDebugStringA(os.str().c_str());
+            }
+            else
+            {
+                std::function<void(FbxNode*)> checkNode = [&](FbxNode* node)
+                    {
+                        if (!node) return;
+                        std::set<FbxTime> keyTimes;
+                        CollectKeyTimes(node, layer, keyTimes);
+
+                        if (!keyTimes.empty())
+                        {
+                            os << "  Node '" << node->GetName() << "' has "
+                                << keyTimes.size() << " keys.\n";
+                        }
+
+                        for (int i = 0; i < node->GetChildCount(); ++i)
+                            checkNode(node->GetChild(i));
+                    };
+
+                checkNode(scene->GetRootNode());
+                OutputDebugStringA(os.str().c_str());
+            }
+        }
+    }
 
     // -------------------------------------------------------------------------
     // 1) DirectX 좌표계 적용
@@ -1808,6 +1852,54 @@ bool CMesh::LoadAnimationFromFBX(
     FbxScene* scene = FbxScene::Create(mgr, "AnimScene");
     imp->Import(scene);
     imp->Destroy();
+    // =============================================================
+// [Debug] 애니메이션 FBX에서 본들이 키를 가지고 있는지 검사
+// =============================================================
+    {
+        std::ostringstream os;
+        os << "[FBX Anim] Keyframe Check for File: " << filename << "\n";
+
+        FbxAnimStack* st = scene->GetCurrentAnimationStack();
+        if (!st && scene->GetSrcObjectCount<FbxAnimStack>() > 0)
+            st = scene->GetSrcObject<FbxAnimStack>(0);
+
+        if (!st)
+        {
+            os << "  No AnimStack.\n";
+            OutputDebugStringA(os.str().c_str());
+        }
+        else
+        {
+            FbxAnimLayer* layer = st->GetMember<FbxAnimLayer>(0);
+
+            if (!layer)
+            {
+                os << "  AnimStack exists but no AnimLayer.\n";
+                OutputDebugStringA(os.str().c_str());
+            }
+            else
+            {
+                std::function<void(FbxNode*)> checkNode2 = [&](FbxNode* node)
+                    {
+                        if (!node) return;
+                        std::set<FbxTime> keyTimes;
+                        CollectKeyTimes(node, layer, keyTimes);
+
+                        if (!keyTimes.empty())
+                        {
+                            os << "  Node '" << node->GetName() << "' has "
+                                << keyTimes.size() << " keys.\n";
+                        }
+
+                        for (int i = 0; i < node->GetChildCount(); ++i)
+                            checkNode2(node->GetChild(i));
+                    };
+
+                checkNode2(scene->GetRootNode());
+                OutputDebugStringA(os.str().c_str());
+            }
+        }
+    }
 
     // 동일한 좌표계 적용 (Mesh 로드와 동일)
     FbxAxisSystem::DirectX.ConvertScene(scene);

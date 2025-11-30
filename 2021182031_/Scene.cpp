@@ -372,12 +372,12 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	
 	{
-		/*
+		
 		AnimationClip jumpClip;
 		bool animLoaded = UnitychanMesh->LoadAnimationFromFBX(
 			"Models/unitychan_JUMP00.fbx", "Jump",jumpClip, 1.0f
 		);
-		*/
+		
 
 		AnimationClip idleClip;
 		bool idleLoaded = UnitychanMesh->LoadAnimationFromFBX(
