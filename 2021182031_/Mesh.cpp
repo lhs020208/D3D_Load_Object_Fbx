@@ -2107,10 +2107,11 @@ bool CMesh::LoadAnimationFromFBX(
     traverse(scene->GetRootNode());
 
     // ============================================================
-    // ★ (추가) 0프레임(T포즈) 제거: 전체 트랙에서 가장 작은 timeSec > 0 찾기
-    // ============================================================
+// ★ 0프레임(T포즈) 제거: 전체 트랙에서 가장 작은 timeSec > 0 찾기
+// ============================================================
     float minTime = FLT_MAX;
 
+    // 1) 0보다 큰 키들 중에서 가장 작은 시간 찾기
     for (auto& track : outClip.boneTracks)
     {
         for (auto& k : track.keyframes)
@@ -2122,19 +2123,33 @@ bool CMesh::LoadAnimationFromFBX(
         }
     }
 
-
-    // minTime이 유효할 경우 → 모든 key.timeSec -= minTime
+    // 2) minTime만큼 전체를 당기고, 0보다 작은 키(= rest 포즈) 제거
     if (minTime != FLT_MAX)
     {
+        // 전체 키 시간 이동
         for (auto& track : outClip.boneTracks)
         {
             for (auto& k : track.keyframes)
                 k.timeSec -= minTime;
         }
 
+        // ★ 여기 추가: 0보다 작은 키는 전부 삭제 (rest 포즈 날리기)
+        for (auto& track : outClip.boneTracks)
+        {
+            auto& keys = track.keyframes;
+            keys.erase(
+                std::remove_if(keys.begin(), keys.end(),
+                    [](const Keyframe& k)
+                    {
+                        return k.timeSec < 0.0f;
+                    }),
+                keys.end());
+        }
+
         // duration도 갱신
         outClip.duration -= minTime;
     }
+
 
 
     // ---------------------------------------------------------------------------------------
