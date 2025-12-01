@@ -339,6 +339,42 @@ void CGameObject::PlayAnimation(const std::string& clipName, bool loop, float st
 		CAnimator* anim = mesh->GetAnimator();
 		if (!anim) continue;
 
+		// ============================================================
+        // ★ mesh / anim 비교 출력
+        // ============================================================
+		/*
+        {
+            char buf[512];
+
+            sprintf_s(buf,
+                "[PlayAnimation] Mesh %d\n"
+                "  Mesh ptr : %p\n"
+                "  Animator : %p\n"
+                "  BoneCount(mesh) = %d, BoneCount(anim) = %d\n",
+                i,
+                mesh,
+                anim,
+                mesh->GetBoneCount(),
+                anim->GetBoneCount()
+            );
+            OutputDebugStringA(buf);
+
+            // 본 이름도 비교 출력 (최대 20개까지만)
+            const auto& bones = mesh->GetBones();
+            int bc = (int)bones.size();
+
+            for (int bi = 0; bi < bc && bi < 20; ++bi)
+            {
+                const auto& b = bones[bi];
+                sprintf_s(buf,
+                    "    Bone[%d]: %s (parent=%d)\n",
+                    bi, b.name.c_str(), b.parentIndex);
+                OutputDebugStringA(buf);
+            }
+        }
+		*/
+        // ============================================================
+
 		if (!anim->Play(clipName, loop, start))
 			continue;
 
