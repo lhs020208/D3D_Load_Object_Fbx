@@ -330,8 +330,8 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
     imp->Import(scene);
     imp->Destroy();
     // =============================================================
-// [Debug] 모델 FBX에서 본들이 애니메이션 키를 가지고 있는지 검사
-// =============================================================
+    // [Debug] 모델 FBX에서 본들이 애니메이션 키를 가지고 있는지 검사
+    // =============================================================
     {
         std::ostringstream os;
         os << "[FBX Mesh] Keyframe Check for File: " << filename << "\n";
@@ -928,8 +928,7 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
             }
         }
 
-        // 본별 사용 여부 및 offsetMatrix 스케일 체크 (앞 몇 개만 찍음)
-        for (size_t i = 0; i < m_Bones.size() && i < 32; ++i)
+        for (size_t i = 0; i < m_Bones.size(); ++i)
         {
             const Bone& b = m_Bones[i];
             XMMATRIX off = XMLoadFloat4x4(&b.offsetMatrix);
@@ -953,40 +952,6 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
             OutputDebugStringA(buf2);
         }
     }
-    // =============================================================
-    // [BindPoseDebug] 모델 FBX 바인드포즈 출력
-    // =============================================================
-    for (size_t i = 0; i < m_SubMeshes.size(); ++i)
-    {
-        char buf[512];
-
-        XMFLOAT4X4 mat = m_Bones[i].bindLocal;
-        XMMATRIX m = XMLoadFloat4x4(&mat);
-
-        // TRS 분해
-        XMVECTOR s, r, t;
-        XMMatrixDecompose(&s, &r, &t, m);
-
-        XMFLOAT3 sf, tf;
-        XMFLOAT4 rf;
-        XMStoreFloat3(&sf, s);
-        XMStoreFloat4(&rf, r);
-        XMStoreFloat3(&tf, t);
-
-        sprintf_s(buf,
-            "[BindPose] Bone '%s'\n"
-            "  T = (%.4f, %.4f, %.4f)\n"
-            "  R = (%.4f, %.4f, %.4f, %.4f)\n"
-            "  S = (%.4f, %.4f, %.4f)\n",
-            m_Bones[i].name.c_str(),
-            tf.x, tf.y, tf.z,
-            rf.x, rf.y, rf.z, rf.w,
-            sf.x, sf.y, sf.z
-        );
-
-        OutputDebugStringA(buf);
-    }
-
 
     XMFLOAT3 bbMin(+FLT_MAX, +FLT_MAX, +FLT_MAX);
     XMFLOAT3 bbMax(-FLT_MAX, -FLT_MAX, -FLT_MAX);
@@ -1998,6 +1963,51 @@ bool CMesh::LoadAnimationFromFBX(
     // 4) 애니메이션 rest pose(local) 추출 + deltaLocal 계산
     // ============================================================
     {
+        // -----------------------------------------------------------------------------
+        // 4-a) 실제 애니메이션에서 "첫 의미 있는 키프레임 시간"을 찾는다.
+        //      → 모든 본의 모든 transform track에서 가장 이른 키 시간
+        // -----------------------------------------------------------------------------
+        FbxTime restTime;
+        bool restTimeFound = false;
+
+        {
+            FbxTime earliest;  // 초기 미설정
+
+            std::function<void(FbxNode*)> scan = [&](FbxNode* node)
+                {
+                    if (!node) return;
+
+                    // 이 노드의 모든 키 수집
+                    std::set<FbxTime> keyTimes;
+                    CollectKeyTimes(node, layer, keyTimes);
+
+                    for (auto& t : keyTimes)
+                    {
+                        // 타임스팬 범위 벗어나면 무시
+                        if (t < timeSpan.GetStart() || t > timeSpan.GetStop())
+                            continue;
+
+                        if (!restTimeFound || t < earliest)
+                        {
+                            earliest = t;
+                            restTimeFound = true;
+                        }
+                    }
+
+                    for (int c = 0; c < node->GetChildCount(); ++c)
+                        scan(node->GetChild(c));
+                };
+
+            scan(scene->GetRootNode());
+
+            // ★ restTime 확정
+            if (restTimeFound)
+                restTime = earliest;
+            else
+                restTime = timeSpan.GetStart();   // fallback: 대부분 0이지만 존재하지 않는 경우만
+        }
+
+        /*
         // 4-a) 먼저 전체 본에서 "가장 이른 키프레임 시간"을 찾는다.
         FbxTime restTime = timeSpan.GetStart();
 
@@ -2034,59 +2044,7 @@ bool CMesh::LoadAnimationFromFBX(
             if (hasKey)
                 restTime = firstKeyTime; // ★ 이제 restTime은 "실제 첫 키프레임 시간"
         }
-
-        OutputDebugStringA("\n[AnimRestPose] ===== REST POSE (ANIMATION FIRST KEY) =====\n");
-
-        for (size_t i = 0; i < m_Bones.size(); ++i)
-        {
-            FbxNode* boneNode = scene->FindNodeByName(m_Bones[i].name.c_str());
-            if (!boneNode)
-            {
-                OutputDebugStringA(("[AnimRestPose] Bone " + m_Bones[i].name + " : NOT FOUND IN ANIMATION\n").c_str());
-                XMStoreFloat4x4(&m_Bones[i].animRestLocal, XMMatrixIdentity());
-                XMStoreFloat4x4(&m_Bones[i].deltaLocal, XMMatrixIdentity());
-                continue;
-            }
-
-            // 애니 rest pose (local)
-            FbxAMatrix restLocalM = boneNode->EvaluateLocalTransform(restTime);
-            FbxVector4 RT = restLocalM.GetT();
-            FbxQuaternion RR = restLocalM.GetQ();
-            FbxVector4 RS = restLocalM.GetS();
-
-            // 로그 출력
-            {
-                char buf[512];
-                sprintf_s(buf,
-                    "[AnimRestPose] Bone '%s'\n"
-                    "  T = (%.4f, %.4f, %.4f)\n"
-                    "  R = (%.4f, %.4f, %.4f, %.4f)\n"
-                    "  S = (%.4f, %.4f, %.4f)\n",
-                    m_Bones[i].name.c_str(),
-                    RT[0], RT[1], RT[2],
-                    RR[0], RR[1], RR[2], RR[3],
-                    RS[0], RS[1], RS[2]
-                );
-                OutputDebugStringA(buf);
-            }
-
-            // 원래 있던 animRestLocal, deltaLocal 계산
-            XMMATRIX animRest =
-                XMMatrixScaling((float)RS[0], (float)RS[1], (float)RS[2]) *
-                XMMatrixRotationQuaternion(XMVectorSet((float)RR[0], (float)RR[1], (float)RR[2], (float)RR[3])) *
-                XMMatrixTranslation((float)RT[0], (float)RT[1], (float)RT[2]);
-
-            XMMATRIX animRestNoScale = RemoveScale(animRest);
-            XMStoreFloat4x4(&m_Bones[i].animRestLocal, animRestNoScale);
-
-            XMMATRIX bindLocal = XMLoadFloat4x4(&m_Bones[i].bindLocal);
-            XMMATRIX bindNoScale = RemoveScale(bindLocal);
-
-            XMMATRIX delta = bindNoScale * XMMatrixInverse(nullptr, animRestNoScale);
-            XMStoreFloat4x4(&m_Bones[i].deltaLocal, delta);
-        }
-
-        OutputDebugStringA("[AnimRestPose] ============================================\n");
+        */
 
         for (size_t i = 0; i < m_Bones.size(); ++i)
         {
@@ -2125,9 +2083,9 @@ bool CMesh::LoadAnimationFromFBX(
     }
 
     // ============================================================
-// 5) 키프레임 추출 (deltaLocal * rawLocal 보정 적용)
-//      + 0프레임 제거(첫 유효 프레임을 0초로 재정렬)
-// ============================================================
+    // 5) 키프레임 추출 (deltaLocal * rawLocal 보정 적용)
+    //      + 0프레임 제거(첫 유효 프레임을 0초로 재정렬)
+    // ============================================================
     std::function<void(FbxNode*)> traverse = [&](FbxNode* node)
         {
             if (!node) return;
@@ -2267,8 +2225,40 @@ bool CMesh::LoadAnimationFromFBX(
         outClip.duration -= minTime;
     }
 
+    // ============================================================
+    // [Debug] 각 본의 keyframe[0] 로컬 포즈 출력
+    // ============================================================
+    /*
+    {
+        std::ostringstream os;
+        os << "[Anim] First Keyframe Pose (after time shift) for File: " << filename << "\n";
 
+        for (auto& track : outClip.boneTracks)
+        {
+            if (track.keyframes.empty()) continue;
 
+            const Keyframe& k = track.keyframes.front();
+
+            os << "  Bone '" << track.boneName << "'\n";
+            os << "    t = " << k.timeSec << " sec\n";
+            os << "    T = ("
+                << k.translation.x << ", "
+                << k.translation.y << ", "
+                << k.translation.z << ")\n";
+            os << "    R = ("
+                << k.rotationQuat.x << ", "
+                << k.rotationQuat.y << ", "
+                << k.rotationQuat.z << ", "
+                << k.rotationQuat.w << ")\n";
+            os << "    S = ("
+                << k.scale.x << ", "
+                << k.scale.y << ", "
+                << k.scale.z << ")\n";
+        }
+
+        OutputDebugStringA(os.str().c_str());
+    }
+    */
     // ---------------------------------------------------------------------------------------
     // 6) cleanup
     // ---------------------------------------------------------------------------------------

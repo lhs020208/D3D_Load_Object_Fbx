@@ -256,7 +256,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	m_pPlayer->SetSrvDescriptorInfo(m_pd3dSrvDescriptorHeap, m_nSrvDescriptorIncrementSize);
 
 	//=====================================================================
-	// 2) UnityChan Mesh ¥å
+	// 2) UnityChan Mesh
 	//=====================================================================
 	//CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.fbx", 2);
 	CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/orc with skin and rig.fbx", 2);
@@ -302,7 +302,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	// 5) Player ¼³Á¤
 	//=====================================================================
 	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
-	m_pPlayer->SetCameraOffset(XMFLOAT3(-00.0f, 100.0f, 200.0f));
+	m_pPlayer->SetCameraOffset(XMFLOAT3(-00.0f, 200.0f, 200.0f));
 	m_pPlayer->CreateShaderVariables(pd3dDevice, pd3dCommandList);
 	m_pPlayer->SetShader(pShader);
 
