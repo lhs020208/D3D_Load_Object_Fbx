@@ -863,15 +863,13 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
     dbg << "SubMesh Count: " << m_SubMeshes.size() << "\n";
     dbg << "Bone Count: " << m_Bones.size() << "\n\n";
 
-    // Bone 목록 (최대 10개만)
-    dbg << "Bones (up to 10 shown):\n";
-    for (int i = 0; i < (int)m_Bones.size() && i < 10; ++i) {
+    dbg << "Bones (All " << m_Bones.size() << " bones):\n";
+    for (int i = 0; i < (int)m_Bones.size(); ++i) {
         dbg << "  [" << i << "] " << m_Bones[i].name
             << " (parent=" << m_Bones[i].parentIndex << ")\n";
     }
-    if (m_Bones.size() > 10)
-        dbg << "  ... (" << m_Bones.size() - 10 << " more)\n";
     dbg << "\n";
+
 
     // SubMesh 상세
     int totalVerts = 0;
@@ -955,6 +953,40 @@ void CMesh::LoadMeshFromFBX(ID3D12Device* device,
             OutputDebugStringA(buf2);
         }
     }
+    // =============================================================
+    // [BindPoseDebug] 모델 FBX 바인드포즈 출력
+    // =============================================================
+    for (size_t i = 0; i < m_SubMeshes.size(); ++i)
+    {
+        char buf[512];
+
+        XMFLOAT4X4 mat = m_Bones[i].bindLocal;
+        XMMATRIX m = XMLoadFloat4x4(&mat);
+
+        // TRS 분해
+        XMVECTOR s, r, t;
+        XMMatrixDecompose(&s, &r, &t, m);
+
+        XMFLOAT3 sf, tf;
+        XMFLOAT4 rf;
+        XMStoreFloat3(&sf, s);
+        XMStoreFloat4(&rf, r);
+        XMStoreFloat3(&tf, t);
+
+        sprintf_s(buf,
+            "[BindPose] Bone '%s'\n"
+            "  T = (%.4f, %.4f, %.4f)\n"
+            "  R = (%.4f, %.4f, %.4f, %.4f)\n"
+            "  S = (%.4f, %.4f, %.4f)\n",
+            m_Bones[i].name.c_str(),
+            tf.x, tf.y, tf.z,
+            rf.x, rf.y, rf.z, rf.w,
+            sf.x, sf.y, sf.z
+        );
+
+        OutputDebugStringA(buf);
+    }
+
 
     XMFLOAT3 bbMin(+FLT_MAX, +FLT_MAX, +FLT_MAX);
     XMFLOAT3 bbMax(-FLT_MAX, -FLT_MAX, -FLT_MAX);
@@ -1853,8 +1885,8 @@ bool CMesh::LoadAnimationFromFBX(
     imp->Import(scene);
     imp->Destroy();
     // =============================================================
-// [Debug] 애니메이션 FBX에서 본들이 키를 가지고 있는지 검사
-// =============================================================
+    // [Debug] 애니메이션 FBX에서 본들이 키를 가지고 있는지 검사
+    // =============================================================
     {
         std::ostringstream os;
         os << "[FBX Anim] Keyframe Check for File: " << filename << "\n";
@@ -2003,6 +2035,58 @@ bool CMesh::LoadAnimationFromFBX(
                 restTime = firstKeyTime; // ★ 이제 restTime은 "실제 첫 키프레임 시간"
         }
 
+        OutputDebugStringA("\n[AnimRestPose] ===== REST POSE (ANIMATION FIRST KEY) =====\n");
+
+        for (size_t i = 0; i < m_Bones.size(); ++i)
+        {
+            FbxNode* boneNode = scene->FindNodeByName(m_Bones[i].name.c_str());
+            if (!boneNode)
+            {
+                OutputDebugStringA(("[AnimRestPose] Bone " + m_Bones[i].name + " : NOT FOUND IN ANIMATION\n").c_str());
+                XMStoreFloat4x4(&m_Bones[i].animRestLocal, XMMatrixIdentity());
+                XMStoreFloat4x4(&m_Bones[i].deltaLocal, XMMatrixIdentity());
+                continue;
+            }
+
+            // 애니 rest pose (local)
+            FbxAMatrix restLocalM = boneNode->EvaluateLocalTransform(restTime);
+            FbxVector4 RT = restLocalM.GetT();
+            FbxQuaternion RR = restLocalM.GetQ();
+            FbxVector4 RS = restLocalM.GetS();
+
+            // 로그 출력
+            {
+                char buf[512];
+                sprintf_s(buf,
+                    "[AnimRestPose] Bone '%s'\n"
+                    "  T = (%.4f, %.4f, %.4f)\n"
+                    "  R = (%.4f, %.4f, %.4f, %.4f)\n"
+                    "  S = (%.4f, %.4f, %.4f)\n",
+                    m_Bones[i].name.c_str(),
+                    RT[0], RT[1], RT[2],
+                    RR[0], RR[1], RR[2], RR[3],
+                    RS[0], RS[1], RS[2]
+                );
+                OutputDebugStringA(buf);
+            }
+
+            // 원래 있던 animRestLocal, deltaLocal 계산
+            XMMATRIX animRest =
+                XMMatrixScaling((float)RS[0], (float)RS[1], (float)RS[2]) *
+                XMMatrixRotationQuaternion(XMVectorSet((float)RR[0], (float)RR[1], (float)RR[2], (float)RR[3])) *
+                XMMatrixTranslation((float)RT[0], (float)RT[1], (float)RT[2]);
+
+            XMMATRIX animRestNoScale = RemoveScale(animRest);
+            XMStoreFloat4x4(&m_Bones[i].animRestLocal, animRestNoScale);
+
+            XMMATRIX bindLocal = XMLoadFloat4x4(&m_Bones[i].bindLocal);
+            XMMATRIX bindNoScale = RemoveScale(bindLocal);
+
+            XMMATRIX delta = bindNoScale * XMMatrixInverse(nullptr, animRestNoScale);
+            XMStoreFloat4x4(&m_Bones[i].deltaLocal, delta);
+        }
+
+        OutputDebugStringA("[AnimRestPose] ============================================\n");
 
         for (size_t i = 0; i < m_Bones.size(); ++i)
         {
@@ -2105,10 +2189,43 @@ bool CMesh::LoadAnimationFromFBX(
         };
 
     traverse(scene->GetRootNode());
+    // ============================================================
+    // [Debug] 키가 있는 실제 프레임 번호 출력
+    // ============================================================
+    {
+        std::ostringstream os;
+        os << "[Anim] Keyframe Frame Index Check for File: " << filename << "\n";
+
+        // FBX의 프레임레이트(TimeMode) 사용
+        FbxTime::EMode timeMode = scene->GetGlobalSettings().GetTimeMode();
+
+        for (auto& track : outClip.boneTracks)
+        {
+            if (track.keyframes.empty()) continue;
+
+            os << "  Bone '" << track.boneName << "' has keys at frames: ";
+
+            for (auto& k : track.keyframes)
+            {
+                // k.timeSec 은 shift 전이므로 정확한 frame 변환 위해 FBXTime 다시 생성
+                FbxTime ft;
+                ft.SetSecondDouble(k.timeSec);
+                int frame = ft.GetFrameCount(timeMode);
+
+                os << frame << ", ";
+            }
+
+            os << "\n";
+        }
+
+        OutputDebugStringA(os.str().c_str());
+    }
+
+
 
     // ============================================================
-// ★ 0프레임(T포즈) 제거: 전체 트랙에서 가장 작은 timeSec > 0 찾기
-// ============================================================
+    // ★ 0프레임(T포즈) 제거: 전체 트랙에서 가장 작은 timeSec > 0 찾기
+    // ============================================================
     float minTime = FLT_MAX;
 
     // 1) 0보다 큰 키들 중에서 가장 작은 시간 찾기
