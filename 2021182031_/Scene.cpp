@@ -258,8 +258,8 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	// 2) UnityChan Mesh
 	//=====================================================================
-	CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.fbx", 2);
-	//CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/UCfromUnity.fbx", 2);
+	//CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.fbx", 2);
+	CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/orcGM.fbx", 2);
 	// [추가] 본이 있다면 스키닝 활성화
 	int boneCount = UnitychanMesh->GetBoneCount();
 	if (boneCount > 0)
@@ -276,16 +276,16 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	// 4) SubMesh 자동 텍스처 매핑
 	//=====================================================================
-	AssetType assetType = AssetType::UnityChan;
-	//AssetType assetType = AssetType::Orc;
+	//AssetType assetType = AssetType::UnityChan;
+	AssetType assetType = AssetType::Orc;
 	UINT baseSRVIndex = 30;
 	int subIdx = 0;
 
 	for (auto& sm : UnitychanMesh->m_SubMeshes)
 	{
 		std::string texFile = GetTextureFileNameForSubMesh(sm, assetType);
-		std::wstring wpath = ToWstring(std::string("Models/UnitychanTexture/") + texFile);
-		//std::wstring wpath = ToWstring(std::string("Models/OrcTexture/") + texFile);
+		//std::wstring wpath = ToWstring(std::string("Models/UnitychanTexture/") + texFile);
+		std::wstring wpath = ToWstring(std::string("Models/OrcTexture/") + texFile);
 
 		UnitychanMesh->LoadTextureFromFile(
 			pd3dDevice,
@@ -383,7 +383,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 		AnimationClip idleClip;
 		bool idleLoaded = UnitychanMesh->LoadAnimationFromFBX(
 			//"Models/unitychan_WALK00_B.fbx", "Idle", idleClip, 1.0f
-			"Models/UCJ3.fbx", "Idle", idleClip, 1.0f
+			"Models/orcGA2.fbx", "Idle", idleClip, 1.0f
 		);
 
 
