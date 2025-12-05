@@ -196,6 +196,12 @@ public:
 		AnimationClip& outClip,
 		float timeScale = 1.0f);
 
+	bool LoadAnimationFromBIN(const char* filename,
+		const std::string& clipName,
+		AnimationClip& outClip,
+		float timeScale = 1.0f);
+
+
 	CAnimator* GetAnimator() { return m_pAnimator; }
 	bool HasAnimator() const { return m_pAnimator != nullptr; }
 

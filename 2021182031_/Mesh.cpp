@@ -2145,3 +2145,180 @@ bool CMesh::LoadAnimationFromFBX(
 
     return true;
 }
+
+bool CMesh::LoadAnimationFromBIN(
+    const char* filename,
+    const std::string& clipName,
+    AnimationClip& outClip,
+    float timeScale)
+{
+    if (!filename) return false;
+    if (m_Bones.empty())
+    {
+        OutputDebugStringA("[CMesh::LoadAnimationFromBIN] Skeleton is empty.\n");
+        return false;
+    }
+
+    std::ifstream fin(filename, std::ios::binary);
+    if (!fin.is_open())
+    {
+        OutputDebugStringA("[CMesh::LoadAnimationFromBIN] Cannot open file.\n");
+        return false;
+    }
+
+    auto ReadRaw = [&](void* dst, size_t sz) -> bool
+        {
+            fin.read(reinterpret_cast<char*>(dst), sz);
+            return fin.good();
+        };
+
+    auto ReadUInt32 = [&](uint32_t& v) -> bool
+        {
+            return ReadRaw(&v, sizeof(v));
+        };
+
+    auto ReadInt32 = [&](int32_t& v) -> bool
+        {
+            return ReadRaw(&v, sizeof(v));
+        };
+
+    auto ReadFloat = [&](float& f) -> bool
+        {
+            return ReadRaw(&f, sizeof(f));
+        };
+
+    auto ReadString = [&](std::string& s) -> bool
+        {
+            uint16_t len = 0;
+            if (!ReadRaw(&len, sizeof(len))) return false;
+            if (len == 0)
+            {
+                s.clear();
+                return true;
+            }
+            s.resize(len);
+            if (!ReadRaw(&s[0], len)) return false;
+            return true;
+        };
+
+    // --------------------------------------------------------
+    // 1) Header
+    // --------------------------------------------------------
+    char magic[4] = {};
+    if (!ReadRaw(magic, 4))
+    {
+        OutputDebugStringA("[CMesh::LoadAnimationFromBIN] Failed to read magic.\n");
+        return false;
+    }
+    if (memcmp(magic, "ABIN", 4) != 0)
+    {
+        OutputDebugStringA("[CMesh::LoadAnimationFromBIN] Invalid magic.\n");
+        return false;
+    }
+
+    uint32_t version = 0;
+    if (!ReadUInt32(version)) return false;
+    if (version != 1)
+    {
+        OutputDebugStringA("[CMesh::LoadAnimationFromBIN] Unsupported version.\n");
+        return false;
+    }
+
+    // --------------------------------------------------------
+    // 2) Clip metadata
+    // --------------------------------------------------------
+    std::string fileClipName;
+    if (!ReadString(fileClipName)) return false;
+
+    float duration = 0.0f;
+    if (!ReadFloat(duration)) return false;
+
+    uint32_t trackCount = 0;
+    if (!ReadUInt32(trackCount)) return false;
+
+    // AnimationClip 기본 세팅
+    outClip.name = !clipName.empty() ? clipName : fileClipName;
+    outClip.duration = duration * timeScale;
+
+    outClip.boneTracks.clear();
+    outClip.boneNameToTrack.clear();
+    outClip.boneTracks.resize(m_Bones.size());
+
+    for (size_t i = 0; i < m_Bones.size(); ++i)
+    {
+        BoneKeyframes& track = outClip.boneTracks[i];
+        track.boneIndex = static_cast<int>(i);
+        track.boneName = m_Bones[i].name;
+        outClip.boneNameToTrack[track.boneName] = static_cast<int>(i);
+    }
+
+    // --------------------------------------------------------
+    // 3) Tracks 로드
+    //    BIN에는 "키가 있는 노드"만 저장되어 있으므로
+    //    boneName으로 CMesh의 m_BoneNameToIndex 에 매핑한다.
+    // --------------------------------------------------------
+    for (uint32_t t = 0; t < trackCount; ++t)
+    {
+        std::string binBoneName;
+        if (!ReadString(binBoneName)) return false;
+
+        int32_t binBoneIndex = -1;
+        if (!ReadInt32(binBoneIndex)) return false; // 현재는 사용하지 않음
+
+        uint32_t keyCount = 0;
+        if (!ReadUInt32(keyCount)) return false;
+
+        // skeleton 과 매칭
+        auto itBone = m_BoneNameToIndex.find(binBoneName);
+        bool mapped = (itBone != m_BoneNameToIndex.end());
+        BoneKeyframes* pTrack = nullptr;
+        if (mapped)
+            pTrack = &outClip.boneTracks[itBone->second];
+
+        for (uint32_t k = 0; k < keyCount; ++k)
+        {
+            float timeSec, tx, ty, tz, rx, ry, rz, rw, sx, sy, sz;
+
+            if (!ReadFloat(timeSec)) return false;
+            if (!ReadFloat(tx)) return false;
+            if (!ReadFloat(ty)) return false;
+            if (!ReadFloat(tz)) return false;
+
+            if (!ReadFloat(rx)) return false;
+            if (!ReadFloat(ry)) return false;
+            if (!ReadFloat(rz)) return false;
+            if (!ReadFloat(rw)) return false;
+
+            if (!ReadFloat(sx)) return false;
+            if (!ReadFloat(sy)) return false;
+            if (!ReadFloat(sz)) return false;
+
+            if (!mapped)
+                continue; // 데이터는 읽었지만, 스켈레톤에 없는 노드면 버림
+
+            Keyframe kf;
+            kf.timeSec = timeSec * timeScale;
+            kf.translation = XMFLOAT3(tx, ty, tz);
+            kf.rotationQuat = XMFLOAT4(rx, ry, rz, rw);
+            kf.scale = XMFLOAT3(sx, sy, sz);
+
+            pTrack->keyframes.push_back(kf);
+        }
+    }
+
+    fin.close();
+
+    // --------------------------------------------------------
+    // 4) 각 본별 키프레임 정렬 (안전용)
+    // --------------------------------------------------------
+    for (auto& track : outClip.boneTracks)
+    {
+        std::sort(track.keyframes.begin(), track.keyframes.end(),
+            [](const Keyframe& a, const Keyframe& b)
+            {
+                return a.timeSec < b.timeSec;
+            });
+    }
+
+    return true;
+}

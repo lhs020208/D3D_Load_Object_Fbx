@@ -256,11 +256,10 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	m_pPlayer->SetSrvDescriptorInfo(m_pd3dSrvDescriptorHeap, m_nSrvDescriptorIncrementSize);
 
 	//=====================================================================
-	// 2) UnityChan Mesh
+	// 2) Mesh
 	//=====================================================================
-	//CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.fbx", 2);
-	CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/orcGM.fbx", 2);
-	// [추가] 본이 있다면 스키닝 활성화
+	CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.bin", 1);
+
 	int boneCount = UnitychanMesh->GetBoneCount();
 	if (boneCount > 0)
 		UnitychanMesh->EnableSkinning(boneCount);
@@ -276,16 +275,16 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	// 4) SubMesh 자동 텍스처 매핑
 	//=====================================================================
-	//AssetType assetType = AssetType::UnityChan;
-	AssetType assetType = AssetType::Orc;
+	AssetType assetType = AssetType::UnityChan;
+	//AssetType assetType = AssetType::Orc;
 	UINT baseSRVIndex = 30;
 	int subIdx = 0;
 
 	for (auto& sm : UnitychanMesh->m_SubMeshes)
 	{
 		std::string texFile = GetTextureFileNameForSubMesh(sm, assetType);
-		//std::wstring wpath = ToWstring(std::string("Models/UnitychanTexture/") + texFile);
-		std::wstring wpath = ToWstring(std::string("Models/OrcTexture/") + texFile);
+		std::wstring wpath = ToWstring(std::string("Models/UnitychanTexture/") + texFile);
+		//std::wstring wpath = ToWstring(std::string("Models/OrcTexture/") + texFile);
 
 		UnitychanMesh->LoadTextureFromFile(
 			pd3dDevice,
@@ -373,27 +372,26 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	
 	{
 		
-		/*
 		AnimationClip jumpClip;
-		bool animLoaded = UnitychanMesh->LoadAnimationFromFBX(
-			"Models/unitychan_JUMP00.fbx", "Jump",jumpClip, 1.0f
+
+		bool animLoaded = UnitychanMesh->LoadAnimationFromBIN(
+			"Models/unitychan_JUMP00.bin", "Jump", jumpClip, 1.0f
 		);
-		*/
+
 
 		AnimationClip idleClip;
-		bool idleLoaded = UnitychanMesh->LoadAnimationFromFBX(
-			//"Models/unitychan_WALK00_B.fbx", "Idle", idleClip, 1.0f
-			"Models/orcGA.fbx", "Idle", idleClip, 1.0f
+		bool idleLoaded = UnitychanMesh->LoadAnimationFromBIN(
+			"Models/unitychan_WAIT00.bin", "Idle", idleClip, 1.0f
 		);
 
 
-		//jumpClip.name = "Jump";
+		jumpClip.name = "Jump";
 		idleClip.name = "Idle";
 
 		CAnimator* pAnimator = UnitychanMesh->EnsureAnimator();
 		if (pAnimator)
 		{
-			//pAnimator->AddClip(jumpClip);
+			pAnimator->AddClip(jumpClip);
 			pAnimator->AddClip(idleClip);
 		}
 
@@ -458,8 +456,8 @@ void CTankScene::OnProcessingKeyboardMessage(HWND hWnd, UINT nMessageID, WPARAM 
 			if (m_pPlayer->move_x < 1)m_pPlayer->move_x += 1;
 			break;
 		default:
-			//m_pPlayer->PlayAnimation("Jump", false, 0.0f);
-			//m_pPlayer->SetNextAnimation("Idle");
+			m_pPlayer->PlayAnimation("Jump", false, 0.0f);
+			m_pPlayer->SetNextAnimation("Idle");
 			break;
 		}
 		break;
