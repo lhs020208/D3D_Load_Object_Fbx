@@ -127,9 +127,6 @@ protected:
 	UINT							m_nTextureRootParameterIndex = 5;  // t0이 RootParam5라고 가정
 	ID3D12Device*					m_pd3dDevice = nullptr;
 
-	// FBX Skin 정보를 SubMesh의 boneIndices / boneWeights에 채우는 헬퍼
-	void FillSkinWeights(FbxMesh* mesh, SubMesh& sm);
-
 public:
 	virtual void Render(ID3D12GraphicsCommandList *pd3dCommandList);
 	
@@ -139,15 +136,9 @@ public:
 			: 0;
 	}
 
-	void LoadMeshFromOBJ(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, char *pstrFileName);
-	void LoadMeshFromFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const char* filename);
 	void LoadMeshFromBIN(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const char* filename);
-
 	void EnableSkinning(int nBones);
 
-	//void LoadTextureFromFile(ID3D12Device* device,ID3D12GraphicsCommandList* cmdList,
-	//	ID3D12DescriptorHeap* srvHeap,UINT descriptorIndex,const wchar_t* fileName);
-	// 구버전. 서브메시 아닌 경우에만 사용 가능
 	void LoadTextureFromFile(ID3D12Device* device,ID3D12GraphicsCommandList* cmdList,
 		ID3D12DescriptorHeap* srvHeap,UINT descriptorIndex,const wchar_t* fileName,int subMeshIndex);
 	
@@ -181,20 +172,6 @@ public:
 
 	bool IsSkinnedMesh() const { return m_bSkinnedMesh; }
 	bool HasBoneCB() const { return (m_pd3dcbBoneTransforms != nullptr); }
-
-	// ------------------------------------------------------------
-	//  애니메이션 FBX 파일 하나에서 AnimationClip 생성
-	//  - filename : 애니메이션 FBX 경로 (예: "Models/unitychan_JUMP00.fbx")
-	//  - clipName : AnimationClip.name 에 들어갈 이름 (예: "Jump")
-	//               빈 문자열이면 FBX AnimStack 이름을 사용하도록 구현 예정
-	//  - outClip  : FBX에서 추출한 키프레임/트랙/길이 정보를 채워서 반환
-	//  - timeScale: FBX 시간을 초 단위로 바꾼 뒤 추가로 곱해줄 배율(기본 1.0f)
-	//  반환값     : 로딩 성공 시 true, 실패 시 false
-	// ------------------------------------------------------------
-	bool LoadAnimationFromFBX(const char* filename,
-		const std::string& clipName,
-		AnimationClip& outClip,
-		float timeScale = 1.0f);
 
 	bool LoadAnimationFromBIN(const char* filename,
 		const std::string& clipName,
