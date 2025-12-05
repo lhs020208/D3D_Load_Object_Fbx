@@ -383,7 +383,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 		AnimationClip idleClip;
 		bool idleLoaded = UnitychanMesh->LoadAnimationFromFBX(
 			//"Models/unitychan_WALK00_B.fbx", "Idle", idleClip, 1.0f
-			"Models/orcGA2.fbx", "Idle", idleClip, 1.0f
+			"Models/orcGA.fbx", "Idle", idleClip, 1.0f
 		);
 
 
