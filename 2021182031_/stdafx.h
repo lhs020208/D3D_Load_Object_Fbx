@@ -48,6 +48,8 @@ using namespace std;
 #include <filesystem>
 //#include <fbxsdk.h>
 #include <wincodec.h>      // WIC API
+#include <fmod.hpp>
+#include <cassert>
 #pragma comment(lib, "windowscodecs.lib")
 
 #include "d3dx12.h"

@@ -7,6 +7,7 @@
 #include "GameFramework.h"
 #include "AssetManager.h"
 #include "Animator.h"
+#include "Sound.h"
 
 extern CGameFramework* g_pFramework;
 
@@ -400,12 +401,15 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	}
 	m_pPlayer->PlayAnimation("Idle", true, 0.0f);
 	
+
+	Sound::Init();
 }
 
 
 void CTankScene::ReleaseObjects()
 {
 	if (m_pd3dGraphicsRootSignature) m_pd3dGraphicsRootSignature->Release();
+	Sound::Release();
 }
 void CTankScene::ReleaseUploadBuffers()
 {
@@ -460,6 +464,7 @@ void CTankScene::OnProcessingKeyboardMessage(HWND hWnd, UINT nMessageID, WPARAM 
 		default:
 			//m_pPlayer->PlayAnimation("Jump", false, 0.0f);
 			//m_pPlayer->SetNextAnimation("Idle");
+			Sound::PlayTest();
 			break;
 		}
 		break;
@@ -508,7 +513,7 @@ void CTankScene::OnProcessingMouseMessage(HWND hWnd, UINT nMessageID, WPARAM wPa
 
 void CTankScene::Animate(float fElapsedTime)
 {
-
+	Sound::Update();
 	XMFLOAT3 xmf3Position = m_pPlayer->GetPosition();
 	m_pPlayer->Animate(fElapsedTime);
 }
