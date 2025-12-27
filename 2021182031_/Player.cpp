@@ -208,7 +208,7 @@ void CPlayer::SetCameraOffset(XMFLOAT3& xmf3CameraOffset)
 
 	// 위를 더 보게 하고 싶으면 Y만 살짝 올리면 됨
 	XMFLOAT3 target = m_xmf3Position;
-	target.y += 100.0f;   // ← 여기가 lookAt 조정 부분
+	target.y += 1.0f;   // ← 여기가 lookAt 조정 부분
 
 	m_pCamera->SetLookAt(camPos, target, m_xmf3Up);
 	m_pCamera->GenerateViewMatrix();
@@ -314,7 +314,7 @@ void CPersonPlayer::Animate(float fElapsedTime)
 	XMFLOAT3 right = GetRight();
 	XMFLOAT3 moveVec = { 0.0f, 0.0f, 0.0f };
 
-	float speed = fElapsedTime * 0.5f * 1000;
+	float speed = fElapsedTime * 0.5f * 10;
 
 	moveVec.x += right.x * move_x * speed;
 	moveVec.z += right.z * move_x * speed;

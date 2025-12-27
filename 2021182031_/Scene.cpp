@@ -258,7 +258,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	// 2) Mesh
 	//=====================================================================
-	CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan.bin", 1);
+	CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan_min.bin", 1);
 	//CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/orcGM.bin", 1);
 
 	int boneCount = UnitychanMesh->GetBoneCount();
@@ -302,7 +302,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	// 5) Player ¼³Á¤
 	//=====================================================================
 	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
-	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, 100.0f, 200.0f));
+	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, 1.0f, 2.0f));
 	m_pPlayer->CreateShaderVariables(pd3dDevice, pd3dCommandList);
 	m_pPlayer->SetShader(pShader);
 
@@ -382,7 +382,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 
 		AnimationClip idleClip;
 		bool idleLoaded = UnitychanMesh->LoadAnimationFromBIN(
-			"Models/unitychan_WAIT00.bin", "Idle", idleClip, 1.0f
+			"Models/unitychan_RUN00_min.bin", "Idle", idleClip, 1.0f
 			//"Models/orcGA.bin", "Idle", idleClip, 1.0f
 		);
 
@@ -458,8 +458,8 @@ void CTankScene::OnProcessingKeyboardMessage(HWND hWnd, UINT nMessageID, WPARAM 
 			if (m_pPlayer->move_x < 1)m_pPlayer->move_x += 1;
 			break;
 		default:
-			m_pPlayer->PlayAnimation("Jump", false, 0.0f);
-			m_pPlayer->SetNextAnimation("Idle");
+			//m_pPlayer->PlayAnimation("Jump", false, 0.0f);
+			//m_pPlayer->SetNextAnimation("Idle");
 			break;
 		}
 		break;
