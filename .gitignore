@@ -96,8 +96,8 @@ packages/
 # *.tga
 *.dds
 *.bmp
-*.wav
-*.mp3
+#*.wav
+#*.mp3
 *.mp4
 # *.zip
 *.7z
