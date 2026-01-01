@@ -259,8 +259,8 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	// 2) Mesh
 	//=====================================================================
-	CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan_min.bin", 1);
-	//CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/orcGM.bin", 1);
+	//CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/unitychan_min.bin", 1);
+	CMesh* UnitychanMesh = new CMesh(pd3dDevice, pd3dCommandList, "Models/Barn1_End_A.bin", 1);
 
 	int boneCount = UnitychanMesh->GetBoneCount();
 	if (boneCount > 0)
@@ -277,16 +277,16 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	// 4) SubMesh 자동 텍스처 매핑
 	//=====================================================================
-	AssetType assetType = AssetType::UnityChan;
-	//AssetType assetType = AssetType::Orc;
+	//AssetType assetType = AssetType::UnityChan;
+	AssetType assetType = AssetType::House;
 	UINT baseSRVIndex = 30;
 	int subIdx = 0;
 
 	for (auto& sm : UnitychanMesh->m_SubMeshes)
 	{
 		std::string texFile = GetTextureFileNameForSubMesh(sm, assetType);
-		std::wstring wpath = ToWstring(std::string("Models/UnitychanTexture/") + texFile);
-		//std::wstring wpath = ToWstring(std::string("Models/OrcTexture/") + texFile);
+		//std::wstring wpath = ToWstring(std::string("Models/UnitychanTexture/") + texFile);
+		std::wstring wpath = ToWstring(std::string("Models/HouseTexture/") + texFile);
 
 		UnitychanMesh->LoadTextureFromFile(
 			pd3dDevice,
@@ -303,7 +303,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	// 5) Player 설정
 	//=====================================================================
 	m_pPlayer->SetPosition(0.0f, 0.0f, 0.0f);
-	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, 1.0f, 2.0f));
+	m_pPlayer->SetCameraOffset(XMFLOAT3(0.0f, 2.0f, 20.0f));
 	m_pPlayer->CreateShaderVariables(pd3dDevice, pd3dCommandList);
 	m_pPlayer->SetShader(pShader);
 
@@ -371,7 +371,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 	//=====================================================================
 	// 7) UnityChan 애니메이션(JUMP00) 로드 & Animator에 등록 + 재생
 	//=====================================================================
-	
+	/*
 	{
 		
 		AnimationClip jumpClip;
@@ -400,7 +400,7 @@ void CTankScene::BuildObjects(ID3D12Device* pd3dDevice,
 
 	}
 	m_pPlayer->PlayAnimation("Idle", true, 0.0f);
-	
+	*/
 
 	Sound::Init();
 }
